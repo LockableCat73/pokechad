@@ -32,7 +32,7 @@ export function openStarter(ctx, onPick) {
           option.setAttribute('aria-checked', String(on));
         }
         confirm.disabled = false;
-        confirm.textContent = `I CHOOSE ${species.name.toUpperCase()}`;
+        confirm.textContent = `CHOOSE ${species.name.toUpperCase()}`;
       },
     },
       sprite(species, { eager: true }),

@@ -8,6 +8,10 @@
  *   - No rounded corners, blurs or soft shadows. Borders are built from hard
  *     box-shadows, which gives the notched corners of old handheld menus.
  *   - Motion uses steps() so it moves in jumps, not smooth tweens.
+ *   - Type: Press Start 2P is drawn on an 8x8 pixel grid, so it is only ever
+ *     set at 8, 16, 24 or 32px, with whole-pixel line heights and no letter
+ *     spacing. Any other size (10px, 12px ...) makes the browser stretch the
+ *     glyphs unevenly and the text looks squashed.
  *
  * Light and dark: every colour is a custom property. The dark values are
  * applied automatically from the system setting (prefers-color-scheme);
@@ -114,8 +118,8 @@ body {
   margin: 0;
   min-height: 100vh;
   font-family: var(--font);
-  font-size: 10px;
-  line-height: 1.7;
+  font-size: 8px;
+  line-height: 16px;
   color: var(--text);
   background-color: var(--bg);
   /* A barely-there pixel weave so large empty areas are not flat. */
@@ -142,8 +146,8 @@ body.has-modal { overflow: hidden; }
 .px { display: block; flex: none; }
 
 h1, h2, p, dl, dd, ol, ul { margin: 0; padding: 0; }
-h1 { font-size: 16px; line-height: 1.4; font-weight: normal; }
-h2 { font-size: 12px; line-height: 1.5; font-weight: normal; }
+h1 { font-size: 24px; line-height: 32px; font-weight: normal; }
+h2 { font-size: 16px; line-height: 24px; font-weight: normal; }
 ol, ul { list-style: none; }
 a { color: inherit; }
 button, input { font: inherit; color: inherit; }
@@ -171,7 +175,7 @@ button, input { font: inherit; color: inherit; }
 /* The logo keeps its own fixed outline colour so it reads the same in both themes. */
 .logo {
   --o: #282030;
-  font-size: 20px; line-height: 1; text-decoration: none; color: #fff; letter-spacing: 1px;
+  font-size: 24px; line-height: 24px; text-decoration: none; color: #fff;
   text-shadow:
     4px 0 0 var(--o), -4px 0 0 var(--o), 0 4px 0 var(--o), 0 -4px 0 var(--o),
     4px 4px 0 var(--o), -4px 4px 0 var(--o), 4px -4px 0 var(--o), -4px -4px 0 var(--o),
@@ -194,7 +198,7 @@ button, input { font: inherit; color: inherit; }
 .center { text-align: center; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-.label { font-size: 8px; line-height: 1.6; letter-spacing: 0.5px; }
+.label { font-size: 8px; line-height: 12px; }
 .muted { color: var(--muted); }
 .small { font-size: 8px; }
 
@@ -221,7 +225,7 @@ button, input { font: inherit; color: inherit; }
   display: inline-flex; align-items: center; justify-content: center;
   min-height: 36px; padding: 8px 12px; margin: 4px;
   border: 0; border-radius: 0; cursor: pointer;
-  font-size: 10px; line-height: 1.4; text-decoration: none; text-align: center; white-space: nowrap;
+  font-size: 8px; line-height: 12px; text-decoration: none; text-align: center; white-space: nowrap;
   color: var(--text); background: var(--btn);
   box-shadow: var(--b), inset -4px -4px 0 0 var(--btn-shade);
   touch-action: manipulation;
@@ -230,7 +234,7 @@ button, input { font: inherit; color: inherit; }
 .btn:active { transform: translateY(4px); box-shadow: var(--b), inset 4px 4px 0 0 var(--btn-shade); }
 .btn:disabled { cursor: default; color: var(--muted); background: var(--paper-2); transform: none; }
 .btn-small { min-height: 28px; padding: 4px 8px; font-size: 8px; }
-.btn-big { min-height: 48px; font-size: 12px; }
+.btn-big { min-height: 48px; font-size: 16px; line-height: 24px; white-space: normal; }
 .btn.selected { background: var(--invert); color: var(--invert-text); box-shadow: var(--b); }
 .btn-primary { background: var(--gold); color: #282030; box-shadow: var(--b), inset -4px -4px 0 0 #c89810; }
 .btn-primary:hover { background: #ffd840; }
@@ -255,7 +259,7 @@ button, input { font: inherit; color: inherit; }
 
 .input {
   min-height: 36px; padding: 8px; margin: 4px; width: calc(100% - 8px);
-  border: 0; border-radius: 0; background: var(--field); color: var(--text); font-size: 10px;
+  border: 0; border-radius: 0; background: var(--field); color: var(--text); font-size: 8px; line-height: 16px;
   box-shadow: 0 -4px 0 0 var(--edge), 0 4px 0 0 var(--edge), -4px 0 0 0 var(--edge), 4px 0 0 0 var(--edge), inset 4px 4px 0 0 var(--line);
   -webkit-appearance: none; appearance: none;
 }
@@ -275,7 +279,7 @@ button, input { font: inherit; color: inherit; }
 .action:active { transform: translateY(4px); }
 .action-chad { background: var(--chad-lt); }
 .action-chud { background: var(--chud-lt); }
-.action-title { font-size: 12px; line-height: 1.5; }
+.action-title { font-size: 16px; line-height: 24px; }
 .action-chad .action-title { color: var(--chad-ink); }
 .action-chud .action-title { color: var(--chud-ink); }
 .action-sub { font-size: 8px; color: var(--muted); }
@@ -285,26 +289,26 @@ button, input { font: inherit; color: inherit; }
 .session-chud { background: var(--chud-lt); }
 .session.is-paused { background: var(--paper-2); }
 .session-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.clock { font-size: 32px; line-height: 1.4; }
+.clock { font-size: 32px; line-height: 48px; }
 .multiplier { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 8px 12px; background: #1c1824; color: #fff; }
 .multiplier .muted { color: #c8c0d0; }
-.multiplier-value { font-size: 16px; color: var(--gold); }
+.multiplier-value { font-size: 16px; line-height: 24px; color: var(--gold); }
 .warning {
   display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 12px; color: #fff; background: #d83030; font-size: 10px;
+  padding: 12px; color: #fff; background: #d83030; font-size: 8px;
   box-shadow: 0 0 0 4px var(--edge);
   animation: blink 1s steps(2, jump-none) infinite;
 }
-.countdown { font-size: 16px; }
+.countdown { font-size: 16px; line-height: 24px; }
 
 /* One compact tile: score, next reward, luck gauge, buddy and the journey track. */
 .progress { padding: 12px; display: flex; flex-direction: column; gap: 4px; }
 .progress-head { display: flex; align-items: center; gap: 12px; }
 .progress-score { flex: none; }
 .progress-next { flex: 1; min-width: 0; text-align: right; }
-.progress-value { font-size: 16px; line-height: 1.4; }
+.progress-value { font-size: 16px; line-height: 24px; }
 .progress-value.negative { color: var(--neg); }
-.progress-togo { font-size: 10px; line-height: 1.6; white-space: nowrap; }
+.progress-togo { font-size: 8px; line-height: 24px; white-space: nowrap; }
 
 .luck {
   position: relative; flex: none; width: 36px; height: 36px; padding: 0; border: 0; cursor: pointer;
@@ -321,19 +325,37 @@ button, input { font: inherit; color: inherit; }
 .buddy .sprite { margin: 0 -8px; }
 .buddy-empty { opacity: 0.4; }
 
-.track-strip { flex: 1; min-width: 0; overflow: hidden; }
+/* The track scrolls sideways through every past and upcoming station. It
+   snaps one station at a time so a sprite is never left half cut off. */
+.track-wrap { position: relative; flex: 1; min-width: 0; }
+.track-strip {
+  overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+  scrollbar-width: none; cursor: grab; touch-action: pan-x;
+}
+.track-strip::-webkit-scrollbar { display: none; }
+.track-strip.dragging { cursor: grabbing; scroll-snap-type: none; }
+.track-strip.dragging * { pointer-events: none; }
+/* The arrows sit on the label row, in the gaps beside the end stations. */
+.track-arrow {
+  position: absolute; bottom: 0; z-index: 3; width: 20px; height: 12px; padding: 0; border: 0; cursor: pointer;
+  font-size: 8px; line-height: 12px; text-align: center; color: var(--muted); background: transparent;
+}
+.track-arrow:hover { color: var(--text); }
+.track-arrow:disabled { visibility: hidden; }
+.track-arrow.prev { left: 0; }
+.track-arrow.next { right: 0; }
 .track-inner { position: relative; height: 128px; }
 .track-line, .track-fill { position: absolute; left: 0; top: 100px; height: 4px; }
 .track-line { right: 0; background: repeating-linear-gradient(90deg, var(--line) 0 8px, transparent 8px 16px); }
 .track-fill { background: var(--gold); box-shadow: 0 -4px 0 0 var(--edge), 0 4px 0 0 var(--edge); }
-.station { position: absolute; top: 0; width: 96px; margin-left: -48px; display: flex; flex-direction: column; align-items: center; }
+.station { position: absolute; top: 0; display: flex; flex-direction: column; align-items: center; scroll-snap-align: start; }
 .station-art { width: 96px; height: 96px; display: flex; align-items: flex-end; justify-content: center; }
 .station-ball { padding-bottom: 8px; opacity: 0.4; }
 .station-ball.next { opacity: 1; animation: hop 1s steps(2, jump-none) infinite; }
 .station-node { width: 12px; height: 12px; margin-top: 0; background: var(--paper); box-shadow: 0 0 0 4px var(--edge); position: relative; z-index: 1; }
 .station.claimed .station-node { background: var(--gold); }
 .station.shiny .station-node { background: var(--mythic); }
-.station-label { margin-top: 8px; font-size: 8px; line-height: 1.5; color: var(--muted); }
+.station-label { margin-top: 8px; font-size: 8px; line-height: 12px; color: var(--muted); }
 .track-marker { position: absolute; top: 102px; width: 0; height: 0; z-index: 2; }
 .track-marker::before {
   content: ''; position: absolute; left: -6px; top: -6px; width: 12px; height: 12px;
@@ -342,9 +364,9 @@ button, input { font: inherit; color: inherit; }
 
 /* Last 7 days: chad bars rise from the zero line, chud bars hang below it. */
 .week { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.week-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.week-head { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
 .week-head .label { margin-right: auto; }
-.week-total { display: inline-flex; align-items: center; gap: 8px; font-size: 8px; line-height: 1.6; white-space: nowrap; }
+.week-total { display: inline-flex; align-items: center; gap: 8px; font-size: 8px; line-height: 12px; white-space: nowrap; }
 .week-total i { width: 8px; height: 8px; }
 .week-chad { background: var(--chad); }
 .week-chud { background: var(--chud); }
@@ -383,17 +405,17 @@ button, input { font: inherit; color: inherit; }
 /* Compact row of headline numbers. */
 .statbar { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 4px 16px; padding: 8px 12px; }
 .stat { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
-.stat-value { font-size: 10px; line-height: 1.8; }
+.stat-value { font-size: 8px; line-height: 16px; }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 16px; }
-.tile-value { font-size: 16px; line-height: 1.6; }
+.tile-value { font-size: 16px; line-height: 24px; }
 
 /* Two-way switch built as one bordered bar. */
 .segmented {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 4px; background: var(--edge);
   box-shadow: 0 -4px 0 0 var(--edge), 0 4px 0 0 var(--edge), -4px 0 0 0 var(--edge), 4px 0 0 0 var(--edge);
 }
-.segment { min-height: 36px; padding: 8px; border: 0; cursor: pointer; font-size: 10px; background: var(--paper-2); color: var(--muted); }
+.segment { min-height: 36px; padding: 8px; border: 0; cursor: pointer; font-size: 8px; background: var(--paper-2); color: var(--muted); }
 .segment:hover { color: var(--text); }
 .segment.selected { background: var(--gold); color: #282030; }
 
@@ -410,8 +432,8 @@ button, input { font: inherit; color: inherit; }
 .cell.owned.tier-mythical { background: var(--mythic-bg); }
 .cell.shiny { box-shadow: 0 -4px 0 0 var(--gold), 0 4px 0 0 var(--gold), -4px 0 0 0 var(--gold), 4px 0 0 0 var(--gold); }
 .cell:hover { transform: translateY(-4px); }
-.cell-no { font-size: 8px; line-height: 1.5; color: var(--muted); }
-.cell-name { font-size: 8px; line-height: 1.5; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-no { font-size: 8px; line-height: 12px; color: var(--muted); }
+.cell-name { font-size: 8px; line-height: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-count { position: absolute; top: 4px; left: 4px; font-size: 8px; line-height: 1; color: var(--muted); }
 .cell-shiny { position: absolute; top: 4px; right: 4px; }
 
@@ -435,10 +457,10 @@ button, input { font: inherit; color: inherit; }
 .tag { padding: 2px 8px; font-size: 8px; color: #fff; }
 .tag-chad { background: var(--chad); }
 .tag-chud { background: var(--chud); }
-.points { font-size: 12px; }
+.points { font-size: 16px; line-height: 24px; }
 .points.positive { color: var(--pos); }
 .points.negative { color: var(--neg); }
-.note { font-size: 10px; overflow-wrap: anywhere; }
+.note { font-size: 8px; overflow-wrap: anywhere; }
 .stars { display: inline-flex; gap: 4px; }
 .earned { display: flex; flex-wrap: wrap; gap: 8px; }
 .earned-item { display: flex; flex-direction: column; align-items: center; background: var(--paper-2); padding: 0 4px 4px; }
@@ -455,20 +477,21 @@ button, input { font: inherit; color: inherit; }
 .modal { width: 100%; max-width: 440px; padding: 20px; margin: 8px; }
 .modal-small { max-width: 360px; }
 .modal-reveal { max-width: 400px; }
-.modal p { font-size: 10px; }
+.modal p { font-size: 8px; }
 
 .notice { padding: 8px; font-size: 8px; background: var(--warn-bg); box-shadow: 0 0 0 4px var(--edge); margin: 4px; }
 
-.star-picker { display: flex; gap: 8px; align-items: center; }
+.star-picker { display: flex; gap: 12px; align-items: center; padding: 8px; }
 .star-btn {
   display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border: 0; cursor: pointer;
-  background: var(--paper-2); font-size: 12px; color: var(--muted);
+  background: var(--paper-2); font-size: 16px; line-height: 16px; color: var(--muted);
   box-shadow: 0 0 0 4px var(--line);
 }
 .star-btn:hover { background: var(--btn-hover); }
-.star-btn.selected { box-shadow: 0 0 0 4px var(--edge), 0 0 0 8px var(--gold); color: var(--text); background: var(--btn-hover); }
+/* Raised above its neighbours so their borders cannot paint over its ring. */
+.star-btn.selected { position: relative; z-index: 1; box-shadow: 0 0 0 4px var(--edge), 0 0 0 8px var(--gold); color: var(--text); background: var(--btn-hover); }
 .star-word { min-height: 14px; }
-.preview { padding: 12px; font-size: 16px; text-align: center; color: #fff; }
+.preview { padding: 12px; font-size: 16px; line-height: 24px; text-align: center; color: #fff; }
 .preview-chad { background: var(--chad); }
 .preview-chud { background: var(--chud); }
 .input.num { text-align: center; }
@@ -517,14 +540,14 @@ button, input { font: inherit; color: inherit; }
 .sparkle.s3 { right: 24px; bottom: 84px; animation-delay: 0.1s; }
 .sparkle.s4 { left: 100px; top: 8px; animation-delay: 0.5s; }
 .sparkle.s5 { right: 96px; bottom: 16px; animation-delay: 0.3s; }
-.reveal-name { font-size: 16px; line-height: 1.5; min-height: 24px; }
+.reveal-name { font-size: 16px; line-height: 24px; min-height: 48px; }
 .reveal-footer { align-self: stretch; display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-height: 92px; }
 .reveal-footer .btn-quiet { align-self: center; }
 .reveal-grid { align-self: stretch; max-height: 50vh; overflow-y: auto; }
 
 #toast {
   position: fixed; left: 50%; bottom: 24px; z-index: 60; transform: translate(-50%, 200%);
-  max-width: calc(100vw - 48px); padding: 12px 16px; font-size: 10px; text-align: center;
+  max-width: calc(100vw - 48px); padding: 12px 16px; font-size: 8px; text-align: center;
   color: #fff; background: #282030; box-shadow: 0 0 0 4px #fff, 0 0 0 8px #282030;
   visibility: hidden;
 }
@@ -559,7 +582,7 @@ button, input { font: inherit; color: inherit; }
 .table th, .table td { padding: 8px 4px; text-align: right; border-bottom: 4px solid var(--line); }
 .table th:first-child, .table td:first-child { text-align: left; }
 .table th { color: var(--muted); font-weight: normal; }
-details summary { cursor: pointer; font-size: 10px; }
+details summary { cursor: pointer; font-size: 8px; }
 
 /* ---------------------------------------------------------------- motion */
 
@@ -605,11 +628,9 @@ details summary { cursor: pointer; font-size: 10px; }
 @media (max-width: 480px) {
   .top, #view, .foot { padding-left: 12px; padding-right: 12px; }
   .logo { font-size: 16px; }
-  .action-title { font-size: 10px; }
-  .clock { font-size: 24px; }
+  .clock { font-size: 24px; line-height: 32px; }
   .nav { gap: 8px; }
   .modal { padding: 16px; }
-  .star-btn { width: 44px; height: 44px; }
+  .star-btn { width: 40px; height: 40px; }
   .statbar { grid-template-columns: 1fr 1fr; }
-  .reveal-name { font-size: 12px; }
 }

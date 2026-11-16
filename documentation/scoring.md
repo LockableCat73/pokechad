@@ -46,6 +46,10 @@ that staying in the session keeps paying more per minute.
 **It is display only.** `displayMultiplier()` is never used to compute
 points; the formula above is the only thing that is.
 
+The formula equals exactly 1 at one minute and is below 1 before that, so the
+displayed value is floored at 1: the stopwatch reads `x1.00` for the first
+minute and climbs from there.
+
 Next to it the stopwatch shows "UP TO +N PTS": what the session would be
 worth right now with 4 stars.
 

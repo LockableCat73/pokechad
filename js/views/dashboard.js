@@ -136,7 +136,7 @@ function sessionPanel(ctx) {
   const image = active.kind === 'chad' ? 'assets/icons/zacian-crowned.png' : 'assets/icons/snorlax.png';
 
   const clock = h('div', { class: 'clock', role: 'timer', 'aria-label': 'Active time' }, '00:00');
-  const multiplier = h('span', { class: 'multiplier-value' }, 'x0.00');
+  const multiplier = h('span', { class: 'multiplier-value' }, 'x1.00');
   const potential = h('span', { class: 'label muted' }, '');
   const breakLine = paused ? h('div', { class: 'label break-line' }, '') : null;
   const countdown = h('span', { class: 'countdown' }, '5:00');
@@ -177,7 +177,7 @@ function sessionPanel(ctx) {
  * Head row: net score, points to the next reward, and the luck gauge (a
  * small circle that fills as the legendary guarantee gets closer).
  *
- * Body row: your buddy, then the journey track (see fillTrack).
+ * Body row: your buddy, then the scrollable journey track (see fillTrack).
  */
 function progressPanel(ctx) {
   const { state, dex } = ctx;
@@ -220,12 +220,21 @@ function progressPanel(ctx) {
       }, buddy
         ? sprite(buddy, { shiny: state.buddy.shiny, eager: true })
         : h('span', { class: 'buddy-empty' }, icon('pokeball', { scale: 2 }))),
-      h('div', {
-        class: 'track-strip',
-        role: 'group',
-        'aria-label': `Journey track. You are at ${net} points. Next Pokémon at ${target}.`,
-      })));
+      trackWrap(net, target)));
 }
+
+function trackWrap(net, target) {
+  const strip = h('div', {
+    class: 'track-strip',
+    tabindex: '0',
+    role: 'group',
+    'aria-label': `Journey track, scrollable. You are at ${net} points. Next Pokémon at ${target}.`,
+  });
+  return h('div', { class: 'track-wrap' }, strip, trackControls(strip));
+}
+
+/** Unreached stations drawn beyond the last one earned, for scrolling ahead. */
+const TRACK_AHEAD = 10;
 
 /**
  * Draw the journey track into its strip.
@@ -235,11 +244,16 @@ function progressPanel(ctx) {
  * rolled there. A station you have never reached shows a Poké Ball: what is
  * inside is not decided until you get there.
  *
- * Only as many stations as fit are shown, evenly spaced, with no scrolling
- * and nothing cut off at the edges. The window normally ends at the next
- * unreached station. The red marker is the current net score; after chud
- * time it can sit behind stations already reached, in which case the window
- * slides back to keep it in view.
+ * Every station from the start to TRACK_AHEAD beyond the last one earned is
+ * drawn, and the strip scrolls sideways through them: swipe, drag with the
+ * mouse, use the arrow keys when it has focus, or press the two arrow
+ * buttons. Scrolling snaps one station at a time, so the strip always shows
+ * a whole number of stations with nothing cut off at the edges.
+ *
+ * It opens on the "home" view: the window that ends at the next unreached
+ * station. The red marker is the current net score; after chud time it can
+ * sit behind stations already reached, in which case home slides back to
+ * keep it in view.
  */
 function fillTrack(ctx, strip) {
   if (!strip) return;
@@ -250,25 +264,27 @@ function fillTrack(ctx, strip) {
   const claimed = state.rewards.length;
 
   const count = Math.max(2, Math.floor(width / TRACK_STEP));
-  const step = width / count;
+  const step = Math.floor(width / count);
+  const total = claimed + 1 + TRACK_AHEAD;
   const here = Math.min(Math.floor(Math.max(net, 0) / POINTS_PER_REWARD), claimed);
   let first = Math.max(0, claimed + (count >= 5 ? 2 : 1) - (count - 1));
   if (here < first) first = here;
-  const x = (points) => (points / POINTS_PER_REWARD - first + 0.5) * step;
-  const markerX = Math.min(width - 8, Math.max(8, x(net)));
+  const x = (points) => Math.round((points / POINTS_PER_REWARD + 0.5) * step);
+  const markerX = Math.max(8, x(net));
 
   const stations = [];
-  for (let n = first; n < first + count; n++) {
+  for (let n = 0; n < total; n++) {
     const reward = n >= 1 ? state.rewards[n - 1] : state.starter;
     const species = reward ? dex.byId.get(reward.dexId) : null;
     const isNext = state.starter ? n === claimed + 1 : n === 0;
+    const inHome = n >= first && n < first + count;
     const art = reward
-      ? sprite(species, { shiny: Boolean(reward.shiny), eager: true })
+      ? sprite(species, { shiny: Boolean(reward.shiny), eager: inHome })
       : h('span', { class: `station-ball${isNext ? ' next' : ''}` }, icon('pokeball', { scale: 2 }));
     stations.push(
       h('div', {
         class: `station${reward ? ' claimed' : ''}${reward && reward.shiny ? ' shiny' : ''}`,
-        style: { left: `${Math.round(x(n * POINTS_PER_REWARD))}px` },
+        style: { left: `${n * step}px`, width: `${step}px` },
         title: reward && species
           ? (n === 0 ? `${species.name}, your starter` : `${species.name}, earned at ${fmtNumber(n * 100)} points`)
           : 'Not reached yet',
@@ -279,15 +295,65 @@ function fillTrack(ctx, strip) {
     );
   }
 
-  // The gold line starts at the first station on a fresh track, and at the
-  // left edge once earlier stations have scrolled out of the window.
-  const fillFrom = first === 0 ? Math.round(x(0)) : 0;
   strip.replaceChildren(
-    h('div', { class: 'track-inner' },
-      h('div', { class: 'track-line', style: { left: `${fillFrom}px` } }),
-      h('div', { class: 'track-fill', style: { left: `${fillFrom}px`, width: `${Math.max(0, Math.round(markerX) - fillFrom)}px` } }),
+    // The strip is rarely an exact multiple of the step; the few spare pixels
+    // are added to the end so the last stop still lines up with a station.
+    h('div', { class: 'track-inner', style: { width: `${total * step + (width - count * step)}px` } },
+      h('div', { class: 'track-line', style: { left: `${x(0)}px` } }),
+      h('div', { class: 'track-fill', style: { left: `${x(0)}px`, width: `${Math.max(0, markerX - x(0))}px` } }),
       stations,
-      h('div', { class: 'track-marker', style: { left: `${Math.round(markerX)}px` } })));
+      h('div', { class: 'track-marker', style: { left: `${markerX}px` } })));
+  strip.dataset.step = String(step);
+  strip.scrollLeft = first * step;
+  strip.dispatchEvent(new Event('scroll'));
+}
+
+/**
+ * Make the strip scrollable by every means: touch and trackpad work natively,
+ * so this adds mouse dragging and the two arrow buttons.
+ */
+function trackControls(strip) {
+  const stepBy = (direction) => {
+    const step = Number(strip.dataset.step) || TRACK_STEP;
+    strip.scrollLeft = Math.round(strip.scrollLeft / step + direction) * step;
+  };
+  const prev = h('button', { class: 'track-arrow prev', type: 'button', 'aria-label': 'Earlier rewards', onclick: () => stepBy(-1) }, '◀');
+  const next = h('button', { class: 'track-arrow next', type: 'button', 'aria-label': 'Later rewards', onclick: () => stepBy(1) }, '▶');
+  strip.addEventListener('scroll', () => {
+    prev.disabled = strip.scrollLeft <= 0;
+    next.disabled = strip.scrollLeft >= strip.scrollWidth - strip.clientWidth - 1;
+  });
+
+  // Drag with the mouse. Touch and pen already scroll the strip themselves.
+  strip.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    drag = { strip, x: event.clientX, left: strip.scrollLeft, moved: false };
+  });
+  bindDrag();
+  return [prev, next];
+}
+
+/** The mouse drag in progress on a track strip, if any. */
+let drag = null;
+let dragBound = false;
+
+/** Window-level halves of the mouse drag, attached once for the page's lifetime. */
+function bindDrag() {
+  if (dragBound) return;
+  dragBound = true;
+  window.addEventListener('pointermove', (event) => {
+    if (!drag) return;
+    const dx = event.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) < 4) return;
+    drag.moved = true;
+    drag.strip.classList.add('dragging');
+    drag.strip.scrollLeft = drag.left - dx;
+  });
+  window.addEventListener('pointerup', () => {
+    if (!drag) return;
+    drag.strip.classList.remove('dragging'); // snapping resumes and settles on a station
+    drag = null;
+  });
 }
 
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -343,7 +409,7 @@ function weekPanel(ctx) {
 
   return h('section', { class: 'box week', 'aria-label': 'Time spent in the last 7 days' },
     h('div', { class: 'week-head' },
-      h('span', { class: 'label muted' }, 'LAST 7 DAYS'),
+      h('span', { class: 'label muted' }, '7 DAYS'),
       h('span', { class: 'week-total' }, h('i', { class: 'week-chad' }), `CHAD ${span(total('chad'))}`),
       h('span', { class: 'week-total' }, h('i', { class: 'week-chud' }), `CHUD ${span(total('chud'))}`)),
     h('div', { class: 'week-days' }, columns));

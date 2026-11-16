@@ -46,12 +46,16 @@ export function signedPoints(kind, minutes, stars) {
  * This is display only. It is roughly the slope of the t^1.05 term and exists
  * to show that staying in a session pays off; sessionPoints() never uses it.
  *
+ * The formula is exactly 1 at one minute and below 1 before that, so the
+ * value is floored at 1: the stopwatch shows x1.00 for the first minute and
+ * climbs from there.
+ *
  * @param {number} minutes
- * @returns {number} Never below 0.
+ * @returns {number} Never below 1.
  */
 export function displayMultiplier(minutes) {
   const t = Math.max(0, Number(minutes) || 0);
-  return Math.max(0, 1.05 * Math.pow(t, 0.05) - 0.05);
+  return Math.max(1, 1.05 * Math.pow(t, 0.05) - 0.05);
 }
 
 /**
