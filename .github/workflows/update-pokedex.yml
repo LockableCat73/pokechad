@@ -42,8 +42,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      # --refresh re-reads every species, so changes to existing Pokémon
+      # (tier, name, evolution family, colour) are picked up as well as new ones.
       - name: Run the updater
-        run: python tools/update_pokedex.py | tee "$RUNNER_TEMP/update.log"
+        run: python tools/update_pokedex.py --refresh | tee "$RUNNER_TEMP/update.log"
 
       - name: Run the tests against the new data
         run: node --test

@@ -194,6 +194,13 @@ in a single dark block beneath it.
   as its capitals but only about 5 pixels tall, so mixed-case text looks
   squat. This is display only: descriptions are saved as typed. The logo
   opts out to keep its small "é".
+- The letter "é" always stays small (POKéMON, POKéDEX), because the font's
+  capital É is a squat glyph that looks wrong there. `h()` in `js/dom.js`
+  wraps every é in a `<span class="lc">`; use `setText()` instead of
+  `textContent` for text that might contain one.
+- Scrolling areas inside dialogs use a square, themed scrollbar, and forms
+  use `novalidate` with their own messages, so no unstyled browser widget
+  (rounded scrollbar, validation bubble) appears on top of the pixel look.
 - Animations move in steps, not smooth tweens. The thrown ball spins in
   quarter turns and shuffles without rotating, so its pixels stay on the
   grid. Everything is disabled under `prefers-reduced-motion`.

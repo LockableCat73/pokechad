@@ -19,7 +19,7 @@ import { recalculate, clampStars } from './scoring.js';
 import { grantOwed, pityDry, starterOwed, collection, STARTER_POINTS } from './rewards.js';
 import * as stopwatch from './stopwatch.js';
 import { createSfx } from './sfx.js';
-import { h, clear, fmtClock, fmtPoints } from './dom.js';
+import { h, clear, setText, fmtClock, fmtPoints } from './dom.js';
 import * as dashboard from './views/dashboard.js';
 import * as pokedex from './views/pokedex.js';
 import * as history from './views/history.js';
@@ -517,7 +517,7 @@ function confirm(message, { yes = 'YES', no = 'CANCEL', danger = false } = {}) {
 /** Show a short message at the bottom of the screen. */
 function toast(message, duration = 3500) {
   clearTimeout(toastTimer);
-  toastRoot.textContent = message;
+  setText(toastRoot, message);
   toastRoot.classList.add('show');
   toastTimer = setTimeout(() => toastRoot.classList.remove('show'), duration);
 }

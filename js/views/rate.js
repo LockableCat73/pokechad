@@ -11,6 +11,9 @@ import { signedPoints, STAR_MAX } from '../scoring.js';
 import { roundMinutes } from '../stopwatch.js';
 import { NOTE_MAX } from '../state.js';
 
+/** "Add past time" opens with a start time this long before now. */
+const MANUAL_DEFAULT_AGO_MS = 3 * 3_600_000;
+
 /** What each rating means, per kind. Index = number of stars. */
 const STAR_WORDS = {
   chad: ['WASTED', 'MEH', 'DECENT', 'GREAT', 'BEST'],
@@ -134,15 +137,17 @@ export function openRating(ctx) {
 export function openManual(ctx, kind) {
   const now = new Date();
   const pad = (n) => String(n).padStart(2, '0');
-  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const hourAgo = new Date(now.getTime() - 3_600_000);
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  // Default to a session that began three hours ago (which may be yesterday).
+  const began = new Date(now.getTime() - MANUAL_DEFAULT_AGO_MS);
 
-  const date = h('input', { class: 'input', type: 'date', value: today, max: today, required: true, 'aria-label': 'Date' });
-  const time = h('input', { class: 'input', type: 'time', value: `${pad(hourAgo.getHours())}:${pad(hourAgo.getMinutes())}`, required: true, 'aria-label': 'Start time' });
+  const date = h('input', { class: 'input', type: 'date', value: ymd(began), max: ymd(now), 'aria-label': 'Date' });
+  const time = h('input', { class: 'input', type: 'time', value: `${pad(began.getHours())}:${pad(began.getMinutes())}`, 'aria-label': 'Start time' });
   const hours = h('input', { class: 'input num', type: 'number', min: '0', max: '23', step: '1', value: '0', inputmode: 'numeric', 'aria-label': 'Hours' });
   const minutes = h('input', { class: 'input num', type: 'number', min: '0', max: '59', step: '1', value: '30', inputmode: 'numeric', 'aria-label': 'Minutes' });
-  const problem = h('p', { class: 'notice', role: 'alert', hidden: true }, '');
+  const problem = h('p', { class: 'notice notice-error', role: 'alert', hidden: true }, '');
 
+  const whole = (input) => (input.value.trim() === '' ? 0 : Number(input.value));
   const duration = () => (Number(hours.value) || 0) * 60 + (Number(minutes.value) || 0);
   const preview = pointsPreview(kind);
   const picker = starPicker(kind, () => refresh());
@@ -154,23 +159,31 @@ export function openManual(ctx, kind) {
   minutes.addEventListener('input', refresh);
   refresh();
 
+  // novalidate: the browser's own error bubbles are unstyled and break the
+  // look, so every check is done here and reported in the themed notice.
   const form = h('form', {
     class: 'stack',
+    novalidate: true,
     onsubmit: (event) => {
       event.preventDefault();
-      const total = duration();
+      const h0 = whole(hours);
+      const m0 = whole(minutes);
+      const total = h0 * 60 + m0;
       const start = new Date(`${date.value}T${time.value}`);
       let message = '';
-      if (Number.isNaN(start.getTime())) message = 'PICK A VALID DATE AND START TIME.';
-      else if (!(total > 0)) message = 'DURATION MUST BE AT LEAST 1 MINUTE.';
-      else if (total > 24 * 60) message = 'ONE ENTRY CAN COVER AT MOST 24 HOURS.';
+      if (!date.value || !time.value || Number.isNaN(start.getTime())) message = 'PICK A VALID DATE AND START TIME.';
+      else if (!Number.isInteger(h0) || h0 < 0 || h0 > 23) message = 'HOURS MUST BE A WHOLE NUMBER FROM 0 TO 23.';
+      else if (!Number.isInteger(m0) || m0 < 0 || m0 > 59) message = 'MINUTES MUST BE A WHOLE NUMBER FROM 0 TO 59.';
+      else if (total < 1) message = 'DURATION MUST BE AT LEAST 1 MINUTE.';
       else if (start.getTime() + total * 60000 > Date.now() + 60000) message = 'THAT WOULD END IN THE FUTURE.';
       if (message) {
         problem.textContent = message;
         problem.hidden = false;
+        problem.scrollIntoView({ block: 'nearest' });
         ctx.sfx.play('error');
         return;
       }
+      problem.hidden = true;
       ctx.commitSession(
         {
           kind,

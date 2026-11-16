@@ -5,7 +5,7 @@
  * unaffected.
  */
 
-import { h, sprite } from '../dom.js';
+import { h, sprite, setText } from '../dom.js';
 import { STARTERS } from '../rewards.js';
 
 /**
@@ -14,7 +14,7 @@ import { STARTERS } from '../rewards.js';
  */
 export function openStarter(ctx, onPick) {
   let chosen = null;
-  const confirm = h('button', { class: 'btn btn-primary btn-big', type: 'button', disabled: true }, 'CHOOSE ONE');
+  const confirm = h('button', { class: 'btn btn-primary btn-big starter-confirm', type: 'button', disabled: true }, 'CHOOSE ONE');
 
   const options = STARTERS.map((dexId) => {
     const species = ctx.dex.byId.get(dexId);
@@ -22,6 +22,9 @@ export function openStarter(ctx, onPick) {
       class: 'starter-option',
       type: 'button',
       role: 'radio',
+      // The species' Pokédex colour from the data (green, red, blue, yellow ...);
+      // the stylesheet turns it into the highlight used when this one is picked.
+      dataset: { color: species.color || 'yellow' },
       'aria-checked': 'false',
       onclick: () => {
         chosen = dexId;
@@ -32,7 +35,8 @@ export function openStarter(ctx, onPick) {
           option.setAttribute('aria-checked', String(on));
         }
         confirm.disabled = false;
-        confirm.textContent = `CHOOSE ${species.name.toUpperCase()}`;
+        confirm.dataset.color = species.color || 'yellow';
+        setText(confirm, `CHOOSE ${species.name.toUpperCase()}`);
       },
     },
       sprite(species, { eager: true }),
