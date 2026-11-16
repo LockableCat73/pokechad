@@ -9,7 +9,8 @@ repository:
 | Path | Contents |
 |---|---|
 | `data/pokedex.json` | Every species: number, name, generation, tier, evolution family, colour, sprite flags |
-| `assets/sprites/normal/{id}.png` | Normal sprite, 96×96 |
+| `data/forms.json` | Every alternate form and fusion: which species, what kind, its label, what it requires, sprite flags |
+| `assets/sprites/normal/{id}.png` | Normal sprite, 96×96. Species use their Pokédex number; alternate forms use PokeAPI's number for the form (10001 and up) |
 | `assets/sprites/shiny/{id}.png` | Shiny sprite, 96×96 |
 | `assets/icons/snorlax.png`, `zacian-crowned.png` | The two dashboard buttons |
 
@@ -93,6 +94,61 @@ A brand-new Pokémon can appear in PokeAPI before its sprites do.
 
 The summary lists both cases.
 
+## Alternate forms
+
+After the species, the updater does the same job for alternate forms and
+writes `data/forms.json`.
+
+1. **List.** `GET /api/v2/pokemon?limit=100000`; every entry numbered 10000
+   or above is an alternate form of some species.
+2. **Fetch facts** for forms not already on file (`/pokemon/{id}/` and its
+   first `/pokemon-form/`): the form's name, its species, and whether PokeAPI
+   flags it as a Mega. These raw facts are kept in `forms.json`, so the rules
+   can be changed and re-applied without fetching again.
+3. **Classify** each form with
+   [`tools/forms_rules.json`](../tools/forms_rules.json):
+
+   | Rule | Result |
+   |---|---|
+   | Listed under `fusions` | A fusion, numbered `1,000,000 × y + 1,000 × x` (`x` = the alphabetically first of the two species) |
+   | Listed under `overrides` with a `kind` | Exactly what the override says (Zygarde's chain) |
+   | Matches a pattern in `exclude` | Left out, recorded under `skipped` |
+   | PokeAPI's Mega flag, or its name ends in one of `upgradeForms` | A paid `upgrade` |
+   | Anything else | A free `variant` |
+
+   An upgrade that belongs to an alternate form is tied to it automatically:
+   `darmanitan-galar-zen` becomes "Galarian Zen" and `requires` the Galarian
+   form.
+4. **Label** it from `labels` (`"alola"` → "Alolan"), or by tidying its name
+   ("rapid-strike" → "Rapid Strike").
+5. **Download** its normal and shiny sprite, and record whether each exists.
+6. **Write** `forms.json` only if something changed.
+
+```
+PokeAPI lists 326 alternate forms; fetching details for 0.
+No changes to data/forms.json.
+Forms: {'upgrade': 147, 'variant': 125, 'milestone': 2, 'fusion': 6, 'skipped': 46}
+No sprite yet (listed but cannot be unlocked): ['zygarde-mega']
+```
+
+### What needs a human
+
+PokeAPI knows which forms exist and which are Megas. It does not know which
+are paid upgrades in this game, which two Pokémon make a fusion, or what to
+call a form. So **the forms system only partly updates itself**:
+
+| Automatic | Needs an edit to `tools/forms_rules.json` |
+|---|---|
+| A new Mega | A new fusion and its two Pokémon |
+| A new Gigantamax, or any form whose name ends in an entry of `upgradeForms` | A new kind of paid upgrade (add its name to `upgradeForms`) |
+| Any other new form: it becomes a free alternate form | A better label than the tidied name |
+| Artwork appearing for a form that had none | Leaving a form out |
+| | Zygarde's chain |
+
+After editing the rules, run the updater once; no `--refresh` is needed.
+
+How the game uses all this: [shop.md](shop.md).
+
 ## Effect on existing saves
 
 Saves refer to Pokémon by Pokédex number, so adding species changes nothing
@@ -145,7 +201,7 @@ free plan get 2,000 minutes a month; this job uses a minute or two.
 
 ## After an update
 
-Nothing else is needed. `pokedex.json` is fetched network-first, so the site
+Nothing else is needed. `pokedex.json` and `forms.json` are fetched network-first, so the site
 picks up new data on the next load, and new sprite files are cached as they
 are first used.
 

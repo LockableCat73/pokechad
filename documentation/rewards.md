@@ -201,15 +201,24 @@ Each reward is stored as:
 ## What "every Pokémon is available" means
 
 Once past the early game, the pool is every species in `data/pokedex.json`
-with a sprite: all 1,025 at the time of writing (931 common, 71 legendary, 23 mythical). Alternate forms are not separate entries and cannot be collected: no Mega
-Evolutions, Primal forms, Gigantamax, regional forms, fusions (such as the
-Kyurem and Necrozma fusions) or crowned forms. Each species appears once, in
-its default form. Zacian's Crowned Sword form is used only as the picture on
-the Chad button. When
-PokeAPI adds species, the updater adds them to the pool; see
-[pokedex-updater.md](pokedex-updater.md).
+with a sprite: all 1,025 at the time of writing (931 common, 71 legendary,
+23 mythical). When PokeAPI adds species, the updater adds them to the pool;
+see [pokedex-updater.md](pokedex-updater.md).
 
-Filling the whole collection takes 931×7 + 71×5 + 23×2 = 6,918 copies.
+A roll always picks a **species**. Alternate forms are not separate entries
+in the pool; they belong to their species:
+
+- Regional and other free forms (Alolan, Origin, Rotom's appliances ...)
+  arrive with later copies of the species, one new form per copy in Pokédex
+  order. `rollReward()` returns the form along with the species.
+- Megas, Gigantamax and similar are bought with Pokécoins.
+- Fusions are made from two Pokémon in the shop.
+
+All of that is described in [shop.md](shop.md).
+
+Rolls give at most 7 / 5 / 2 copies of a species, counting any copies bought
+in the shop. Filling every species that way takes 931×7 + 71×5 + 23×2 = 6,918
+copies.
 
 ## The luck gauge
 
@@ -220,6 +229,7 @@ that gets closer. Tapping it spells the meaning out.
 
 ## Buddy
 
-Any Pokémon you hold can be set as your buddy from its Pokédex entry. It is
-shown on the dashboard, at the left of the journey track. If you hold the shiny copy you can choose the shiny
-look. It is cosmetic.
+Any Pokémon you hold can be set as your buddy from its Pokédex entry, in any
+form you have unlocked, and so can a fusion. It is shown on the dashboard, at
+the left of the journey track. If you hold the shiny copy you can choose the
+shiny look. It is cosmetic. See [shop.md](shop.md#the-buddy).

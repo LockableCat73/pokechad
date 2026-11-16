@@ -14,6 +14,9 @@ js/
   state.js               default state, validation, load/save, export/import
   scoring.js             points formula, display multiplier, recalculation   (pure)
   rewards.js             starter, tiers, rolls, caps, shinies, pity           (pure)
+  forms.js               alternate forms: lookups, names, form order          (pure)
+  shop.js                Pokécoins, purchases, fusions, Zygarde               (pure)
+  mon.js                 turns a species, form or fusion into a sprite
   stopwatch.js           start / pause / resume / finish, break limit         (pure)
   dom.js                 h() element helper, formatters, sprite()
   pixelart.js            hand-drawn icons as text bitmaps, rating stars
@@ -23,24 +26,29 @@ js/
     rate.js              rating dialog and "add past time" dialog
     starter.js           the one-off starter choice
     reveal.js            the encounter: silhouette, throw, reveal
-    pokedex.js           totals bar, all / shinies switch, grid, detail dialog
+    pokedex.js           totals bar, all / shinies / fused switch, grid, entry with forms
+    shop.js              the Shop screen
+    cards.js             fusion card and buy button, shared by Pokédex and Shop
     history.js           list of every session
     stats.js             all-time tiles and two charts
     settings.js          export, import, sound, reset, about
 sw.js                    service worker (offline, installable)
 manifest.webmanifest     install metadata
 data/pokedex.json        generated: every species with tier and sprite flags
+data/forms.json          generated: alternate forms and fusions
 assets/sprites/          generated: normal/{id}.png and shiny/{id}.png, 96x96
 assets/icons/            Snorlax and Zacian button art, app icons
 assets/fonts/            Press Start 2P and its licence
 tools/update_pokedex.py  regenerates data/ and assets/sprites/ from PokeAPI
-tests/logic.test.js      tests for the pure modules and the save format
+tools/forms_rules.json   hand-written rules for sorting alternate forms
+tests/logic.test.js      tests for scoring, rewards, stopwatch and the save format
+tests/shop.test.js       tests for forms, coins, purchases, fusions and Zygarde
 .github/workflows/       monthly Pokédex update (opens a pull request)
 ```
 
 ## The three layers
 
-**Pure logic** (`scoring.js`, `rewards.js`, `stopwatch.js`). No DOM, no
+**Pure logic** (`scoring.js`, `rewards.js`, `forms.js`, `shop.js`, `stopwatch.js`). No DOM, no
 storage, no clock: the current time and the random generator are passed in.
 This is what the tests exercise.
 
@@ -60,13 +68,15 @@ is used for both loading from `localStorage` and importing a file.
 |---|---|
 | `ctx.state` | The save object. Views read it. |
 | `ctx.dex` | `{ species, byId, updatedAt }` from `data/pokedex.json`. |
+| `ctx.forms` | The index built by `indexForms()` from `data/forms.json`. If that file cannot be read the game runs with plain Pokémon only. |
 | `ctx.sfx.play(name)` | Sound effect. |
 | `ctx.render()`, `ctx.go(view)` | Redraw, navigate. |
 | `ctx.openModal()`, `ctx.closeModal()`, `ctx.confirm()`, `ctx.toast()` | Dialogs and messages. |
 | `ctx.startSession()`, `pauseSession()`, `resumeSession()`, `stopSession()` | Stopwatch. |
 | `ctx.commitSession(record, stars, note)` | Record a finished session. |
 | `ctx.discardPending()` | Drop an unrated stopwatch session. |
-| `ctx.setBuddy()`, `toggleMute()`, `exportBackup()`, `importBackup()`, `resetAll()` | Everything else. |
+| `ctx.buyCopy()`, `buyCopies()`, `buyUpgrade()`, `fuseFusion()`, `unfuseFusion()` | Shop actions. Each asks for confirmation, applies the rule in `shop.js`, saves, redraws and shows what was obtained. |
+| `ctx.setBuddy(ref)`, `toggleMute()`, `exportBackup()`, `importBackup()`, `resetAll()` | Everything else. |
 
 A view is a module exporting `render(ctx, root)` and, optionally,
 `tick(ctx, now)`.
@@ -143,7 +153,8 @@ When you add or rename a JavaScript or CSS file, add it to `SHELL_FILES` in
 
 Top to bottom: the backup reminder (only when overdue), the two big buttons
 (or the stopwatch while a session runs), one compact progress tile, the
-last-7-days tile, and the four navigation tiles.
+last-7-days tile, and the five navigation tiles (the Shop tile carries the
+coin balance).
 
 The progress tile holds the net score, the points left to the next reward,
 the luck gauge, your buddy, and the journey track: Pokémon at stations you
