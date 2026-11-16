@@ -26,12 +26,14 @@ ignores whatever value the file holds.
 | `sessions[].kind`, `activeMinutes`, `stars`, `note`, `startedAt`, `endedAt`, `method`, `pauses`, `autoEnded` | `sessions[].points`, `sessions[].netAfter` |
 | The order of `sessions` | `score.net`, `score.highWater` |
 | `starter` | `pity.dry` |
-| `rewards[].dexId`, `tier`, `shiny`, `pity`, `at`, `sessionId` | `rewards[].n`, `rewards[].trackPoints` |
+| `rewards[].dexId`, `tier`, `shiny`, `pity`, `form`, `at`, `sessionId` | `rewards[].n`, `rewards[].trackPoints` |
 | The order of `rewards` | |
+| `shop.ledger` (every purchase) | The Pokécoin balance, which is not stored at all |
 | `buddy`, `settings`, `createdAt`, `lastExportAt` | |
 
 So to change history you edit the sessions, and the score follows. You never
-need to do the arithmetic yourself.
+need to do the arithmetic yourself. The same goes for Pokécoins: the balance
+is `rewards + starter − everything spent in the ledger`, worked out each time.
 
 ## A complete example
 
@@ -117,7 +119,8 @@ shows them in your local time zone.
 | `starter` | object or `null` | The starter you chose. See [starter](#starter). |
 | `rewards` | list | Every rolled Pokémon, oldest first. See [rewards](#rewards). |
 | `pity` | object | **Derived.** `{ "dry": n }`, see [pity](#pity). |
-| `buddy` | object or `null` | The Pokémon shown on the dashboard: `{ "dexId": 4, "shiny": false }`. |
+| `shop` | object | `{ "ledger": [...] }`: everything bought with Pokécoins. See [shop](#shop). |
+| `buddy` | object or `null` | What is shown on the dashboard. A Pokémon: `{ "dexId": 4, "shiny": false }`, optionally with `"form": "mega-x"`. Or a fusion: `{ "fusion": 643646000, "shiny": false }`. |
 | `active` | object or `null` | A stopwatch that is running right now. See [active](#active). |
 | `pendingRating` | object or `null` | A stopwatch session that has ended but is not rated yet. See [pendingRating](#pendingrating). |
 | `settings` | object | `{ "muted": false }`. `muted: true` turns the sound effects off. |
@@ -186,6 +189,7 @@ One object per rolled Pokémon, oldest first. Reward number `n` belongs to
 | `tier` | `"common"`, `"legendary"`, `"mythical"` | source | The tier at the time of the roll. Used by the pity counter and for display. Anything else is read as `"common"`. |
 | `shiny` | boolean | source | Whether this copy is the shiny one. |
 | `pity` | boolean | source | `true` if the pity rule forced this legendary. Informational. |
+| `form` | string | source | The alternate form this copy arrived in, e.g. `"alola"` or `"heat"`. Left out for the ordinary (Base) form. Form keys are listed per species in [`data/forms.json`](../data/forms.json). |
 | `at` | date-time | source | When it was awarded. |
 | `sessionId` | string or `null` | source | The session that earned it; History shows the Pokémon on that session. `null` is fine. |
 
@@ -193,6 +197,42 @@ The number of rewards you are owed is `floor(highWater / 100) − rewards.length
 If that is positive when the site loads, it rolls the missing ones on the
 spot. If it is zero or negative, nothing happens: **rewards are never
 removed automatically**.
+
+## `shop`
+
+```json
+"shop": {
+  "ledger": [
+    { "type": "copy",    "dexId": 479, "tier": "common", "form": "wash", "shiny": false, "cost": 5,   "at": "2026-11-20T18:04:11.000Z" },
+    { "type": "upgrade", "dexId": 6,   "form": "mega-x",                                 "cost": 150, "at": "2026-11-21T09:12:00.000Z" },
+    { "type": "fuse",    "fusion": 643646000,                                           "cost": 150, "at": "2026-11-22T10:00:00.000Z" },
+    { "type": "unfuse",  "fusion": 643646000,                                           "cost": 0,   "at": "2026-11-23T10:00:00.000Z" }
+  ]
+}
+```
+
+`ledger` is the list of everything bought, oldest first. **Order matters**
+for fusions: a `fuse` followed later by an `unfuse` of the same number means
+the fusion no longer exists.
+
+| `type` | Fields | Meaning |
+|---|---|---|
+| `copy` | `dexId`, `tier`, `shiny`, `form` (optional), `cost`, `at` | A bought copy of a Pokémon. Counts as a copy exactly like a reward does. |
+| `upgrade` | `dexId`, `form`, `cost`, `at` | An upgrade form (Mega, Gigantamax ...) unlocked for that Pokémon. `form` is its key in `data/forms.json`. |
+| `fuse` | `fusion`, `cost`, `at` | A fusion made. `fusion` is its number in `data/forms.json`. |
+| `unfuse` | `fusion`, `at` | That fusion undone. Its `cost` is always 0. |
+| `grant` | `coins`, `at` | Coins handed out. Never written by the site; for test saves and hand edits. |
+
+Nothing else about the shop is stored. From the ledger the site works out:
+
+- **the coin balance**: one coin per entry in `rewards`, plus one for the
+  starter, plus any `grant`, minus the sum of every `cost`;
+- **your copies**: rewards, the starter, and every `copy` entry;
+- **unlocked forms**: free forms from the `form` of your copies, paid ones
+  from `upgrade` entries, Zygarde's from its number of copies;
+- **active fusions**: `fuse` entries not later undone.
+
+The rules behind all this are in [shop.md](shop.md).
 
 ## `pity`
 
@@ -280,14 +320,46 @@ kept, and you then need that many more points before the next roll.
 
 Set `"starter": null`.
 
+### Get coins back for a purchase
+
+Delete its entry from `shop.ledger`. The cost returns to your balance and
+whatever it bought (the copy, the upgrade, the fusion) is gone.
+
+### Give yourself coins
+
+There is no coin field to raise, because the balance is worked out, not
+stored. Append a grant to `shop.ledger`:
+
+```json
+{ "type": "grant", "coins": 500 }
+```
+
+The site never writes a grant itself; it is there for test saves and edits
+like this one.
+
+### Change the form of a copy
+
+Set or remove `"form"` on the reward or on the `copy` ledger entry. Use a key
+from that species' entries in `data/forms.json`; an unknown key is shown as
+the ordinary Pokémon.
+
+### Unlock an upgrade or make a fusion by hand
+
+Append a ledger entry, for example
+`{ "type": "upgrade", "dexId": 94, "form": "mega", "cost": 0 }` or
+`{ "type": "fuse", "fusion": 643646000, "cost": 0 }`. The file is trusted
+here, as it is for rewards: requirements such as spare copies are checked
+when you buy in the shop, not when you type.
+
 ## What happens on import
 
 1. The text must be valid JSON, an object, with `"app": "pokechad"` and a
    `schema` this version understands. Otherwise the import is refused with a
    message and nothing changes.
 2. Every session must have a valid `kind`, `startedAt` and `activeMinutes`,
-   and every reward a valid `dexId`. One bad entry refuses the whole file and
-   names the entry (for example "Session 12: …").
+   every reward a valid `dexId`, and every shop entry a known `type` with the
+   fields that type needs. One bad entry refuses the whole file and names the
+   entry (for example "Session 12: …" or "Shop entry 3: …").
 3. Derived fields are recalculated.
 4. `active` is dropped.
 5. You are asked to confirm, then the browser's save is replaced.
@@ -304,7 +376,7 @@ read.
 
 | Version | Changes |
 |---|---|
-| 1 | First version. |
+| 1 | First version. Later additions that old files simply lack, and that load with sensible defaults, do not change the number: `shop`, `rewards[].form`, and `form` / `fusion` on `buddy`. |
 
 A file with a higher `schema` than the site knows is refused ("update the
 site first"). When a version 2 arrives, `normalize()` in `js/state.js` is the

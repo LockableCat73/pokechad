@@ -16,6 +16,7 @@ export const PALETTE = {
   w: '#ffffff',
   r: '#d83030', // red
   y: '#f8c820', // star yellow
+  o: '#b07808', // dark gold
   b: '#2868c0', // blue
   n: '#38a048', // green
   g: '#a8a098', // grey
@@ -142,6 +143,24 @@ export const BITMAPS = {
     'kkkkkkkkkkkkkkkk',
     '................',
   ],
+  coin: [
+    '.....kkkkkk.....',
+    '...kkyyyyyykk...',
+    '..kyyyyyyyyyyk..',
+    '.kyyoooooyyyyyk.',
+    '.kyyoyyyyoyyyyk.',
+    'kyyyoyyyyoyyyyyk',
+    'kyyyoyyyyoyyyyyk',
+    'kyyyoooooyyyyyyk',
+    'kyyyoyyyyyyyyyyk',
+    'kyyyoyyyyyyyyyyk',
+    'kyyyoyyyyyyyyyyk',
+    '.kyyoyyyyyyyyyk.',
+    '.kyyyyyyyyyyyyk.',
+    '..kyyyyyyyyyyk..',
+    '...kkyyyyyykk...',
+    '.....kkkkkk.....',
+  ],
   sparkle: [
     '...k...',
     '..kyk..',
@@ -222,6 +241,24 @@ function draw(rows, name, { scale = 2, swap = {}, label = '' } = {}) {
     }
   });
   return svg;
+}
+
+/**
+ * A coin amount: the coin icon followed by a number, e.g. for prices and the
+ * balance. The coin keeps a fixed dark outline so it reads on any panel.
+ *
+ * @param {number|string} amount
+ * @param {number} [scale] Icon scale; 1 is 16px.
+ */
+export function coins(amount, scale = 1) {
+  const tag = document.createElement('span');
+  tag.className = 'coins';
+  tag.setAttribute('role', 'img');
+  tag.setAttribute('aria-label', `${amount} Pokécoins`);
+  const text = document.createElement('span');
+  text.textContent = String(amount);
+  tag.append(icon('coin', { scale, swap: { k: '#282030' } }), text);
+  return tag;
 }
 
 /** Fill colours for the rating stars, following the classic IV-judge look. */

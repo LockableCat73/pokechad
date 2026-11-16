@@ -9,6 +9,8 @@
 
 import { h, sprite, fmtClock, fmtNumber, fmtMinutes, dayKey } from '../dom.js';
 import { icon, luckGauge } from '../pixelart.js';
+import { resolveMon, currentBuddy } from '../mon.js';
+import { balance } from '../shop.js';
 import { displayMultiplier, sessionPoints, STAR_MAX, POINTS_PER_REWARD } from '../scoring.js';
 import { PITY_LIMIT, STARTER_POINTS } from '../rewards.js';
 import * as stopwatch from '../stopwatch.js';
@@ -180,13 +182,14 @@ function sessionPanel(ctx) {
  * Body row: your buddy, then the scrollable journey track (see fillTrack).
  */
 function progressPanel(ctx) {
-  const { state, dex } = ctx;
+  const { state } = ctx;
   const net = state.score.net;
   const claimed = state.rewards.length;
   const awaitingStarter = !state.starter;
   const target = awaitingStarter ? STARTER_POINTS : (claimed + 1) * POINTS_PER_REWARD;
   const toGo = Math.max(0, target - net);
-  const buddy = state.buddy ? dex.byId.get(state.buddy.dexId) : null;
+  // The buddy can be a Pokémon in any unlocked form, or a fusion.
+  const buddy = currentBuddy(ctx);
 
   // Luck: rewards left until a legendary is guaranteed.
   const left = Math.max(1, PITY_LIMIT - state.pity.dry + 1);
@@ -215,10 +218,10 @@ function progressPanel(ctx) {
         class: 'buddy',
         type: 'button',
         title: 'Choose your buddy in the Pokédex',
-        'aria-label': buddy ? `Buddy: ${buddy.name}. Open the Pokédex` : 'No buddy yet. Open the Pokédex',
+        'aria-label': buddy ? `Buddy: ${buddy.mon.name}. Open the Pokédex` : 'No buddy yet. Open the Pokédex',
         onclick: () => ctx.go('pokedex'),
       }, buddy
-        ? sprite(buddy, { shiny: state.buddy.shiny, eager: true })
+        ? sprite(buddy.mon, { shiny: buddy.shiny, eager: true })
         : h('span', { class: 'buddy-empty' }, icon('pokeball', { scale: 2 }))),
       trackWrap(net, target)));
 }
@@ -257,7 +260,7 @@ const TRACK_AHEAD = 10;
  */
 function fillTrack(ctx, strip) {
   if (!strip) return;
-  const { state, dex } = ctx;
+  const { state } = ctx;
   const width = strip.clientWidth;
   if (!width) return;
   const net = state.score.net;
@@ -275,7 +278,8 @@ function fillTrack(ctx, strip) {
   const stations = [];
   for (let n = 0; n < total; n++) {
     const reward = n >= 1 ? state.rewards[n - 1] : state.starter;
-    const species = reward ? dex.byId.get(reward.dexId) : null;
+    // Shown in the form the copy arrived in (an Alolan Vulpix stays Alolan).
+    const species = reward ? resolveMon(ctx, reward) : null;
     const isNext = state.starter ? n === claimed + 1 : n === 0;
     const inHome = n >= first && n < first + count;
     const art = reward
@@ -416,12 +420,16 @@ function weekPanel(ctx) {
 }
 
 function navButtons(ctx) {
-  const item = (name, label, art) =>
+  const item = (name, label, art, badge) =>
     h('a', { class: 'box nav-item', href: `#/${name}`, onclick: () => ctx.sfx.play('click') },
-      icon(art, { scale: 3 }),
-      h('span', {}, label));
+      icon(art, { scale: 3, swap: art === 'coin' ? { k: '#282030' } : {} }),
+      h('span', {}, label),
+      badge);
+  // The Shop tile carries the coin balance, so it is visible from home.
+  const owned = balance(ctx.state);
   return h('nav', { class: 'nav', 'aria-label': 'Sections' },
     item('pokedex', 'POKéDEX', 'pokedex'),
+    item('shop', 'SHOP', 'coin', h('span', { class: 'nav-badge', 'aria-label': `${owned} Pokécoins` }, String(owned))),
     item('history', 'HISTORY', 'history'),
     item('stats', 'STATS', 'stats'),
     item('settings', 'BACKUP', 'backup'));

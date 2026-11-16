@@ -29,6 +29,7 @@ export function defaultState(now = Date.now()) {
     starter: null,
     rewards: [],
     pity: { dry: 0 },
+    shop: { ledger: [] },
     buddy: null,
     active: null,
     pendingRating: null,
@@ -43,7 +44,8 @@ export function defaultState(now = Date.now()) {
  * Source-of-truth fields are validated and kept. Derived fields (`points`,
  * `netAfter`, `score`, `pity`, each reward's `n` and `trackPoints`) are
  * thrown away and recomputed, which is what makes a hand-edited backup safe
- * to import.
+ * to import. The coin balance is never stored at all: it is worked out from
+ * the rewards and `shop.ledger` whenever it is needed.
  *
  * @param {unknown} raw
  * @returns {object} A fresh state object.
@@ -79,10 +81,10 @@ export function normalize(raw) {
 
   state.score = recalculate(state.sessions);
   state.pity = { dry: pityDry(state.rewards) };
-
-  if (raw.buddy && Number.isInteger(Number(raw.buddy.dexId))) {
-    state.buddy = { dexId: Number(raw.buddy.dexId), shiny: Boolean(raw.buddy.shiny) };
-  }
+  state.shop = {
+    ledger: list(raw.shop && raw.shop.ledger, 'shop.ledger').map((e, i) => normalizeLedgerEntry(e, i)),
+  };
+  state.buddy = normalizeBuddy(raw.buddy);
   state.active = normalizeActive(raw.active);
   state.pendingRating = normalizePending(raw.pendingRating);
   state.settings = { muted: Boolean(raw.settings && raw.settings.muted) };
@@ -156,7 +158,7 @@ function normalizeReward(raw, index) {
     throw new Error(`${where}: "dexId" must be a Pokédex number.`);
   }
   const n = index + 1;
-  return {
+  const reward = {
     n,
     trackPoints: n * POINTS_PER_REWARD,
     dexId,
@@ -166,6 +168,77 @@ function normalizeReward(raw, index) {
     at: isoOr(raw.at, new Date().toISOString()),
     sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : null,
   };
+  // The form this copy arrived in. Absent means the ordinary (Base) form.
+  if (typeof raw.form === 'string' && raw.form && raw.form !== 'base') reward.form = raw.form;
+  return reward;
+}
+
+/**
+ * The buddy is either a Pokémon (optionally in one of its forms) or a fusion:
+ *   { dexId, shiny, form? }   or   { fusion, shiny }
+ */
+function normalizeBuddy(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const shiny = Boolean(raw.shiny);
+  const fusion = Number(raw.fusion);
+  if (raw.fusion !== undefined && raw.fusion !== null && Number.isInteger(fusion) && fusion > 0) {
+    return { fusion, shiny };
+  }
+  const dexId = Number(raw.dexId);
+  if (!Number.isInteger(dexId) || dexId < 1) return null;
+  const buddy = { dexId, shiny };
+  if (typeof raw.form === 'string' && raw.form && raw.form !== 'base') buddy.form = raw.form;
+  return buddy;
+}
+
+const LEDGER_TYPES = ['copy', 'upgrade', 'fuse', 'unfuse', 'grant'];
+
+/** One entry in the shop ledger (see js/shop.js for the five types). */
+function normalizeLedgerEntry(raw, index) {
+  const where = `Shop entry ${index + 1}`;
+  if (!raw || typeof raw !== 'object') throw new Error(`${where} is not an object.`);
+  if (!LEDGER_TYPES.includes(raw.type)) {
+    throw new Error(`${where}: "type" must be one of ${LEDGER_TYPES.join(', ')}.`);
+  }
+  const cost = Number(raw.cost === undefined ? 0 : raw.cost);
+  if (!Number.isFinite(cost) || cost < 0) {
+    throw new Error(`${where}: "cost" must be a number, 0 or more.`);
+  }
+  const at = isoOr(raw.at, new Date().toISOString());
+  if (raw.type === 'grant') {
+    const coins = Number(raw.coins);
+    if (!Number.isInteger(coins) || coins < 0) {
+      throw new Error(`${where}: "coins" must be a whole number, 0 or more.`);
+    }
+    return { type: 'grant', coins, cost: 0, at };
+  }
+  if (raw.type === 'fuse' || raw.type === 'unfuse') {
+    const fusion = Number(raw.fusion);
+    if (!Number.isInteger(fusion) || fusion < 1) {
+      throw new Error(`${where}: "fusion" must be a fusion number.`);
+    }
+    return { type: raw.type, fusion, cost: raw.type === 'unfuse' ? 0 : cost, at };
+  }
+  const dexId = Number(raw.dexId);
+  if (!Number.isInteger(dexId) || dexId < 1) {
+    throw new Error(`${where}: "dexId" must be a Pokédex number.`);
+  }
+  if (raw.type === 'upgrade') {
+    if (typeof raw.form !== 'string' || !raw.form) {
+      throw new Error(`${where}: "form" must name the upgrade form.`);
+    }
+    return { type: 'upgrade', dexId, form: raw.form, cost, at };
+  }
+  const entry = {
+    type: 'copy',
+    dexId,
+    tier: TIERS[raw.tier] ? raw.tier : 'common',
+    shiny: Boolean(raw.shiny),
+    cost,
+    at,
+  };
+  if (typeof raw.form === 'string' && raw.form && raw.form !== 'base') entry.form = raw.form;
+  return entry;
 }
 
 function normalizeStarter(raw) {

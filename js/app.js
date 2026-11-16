@@ -16,7 +16,9 @@ import {
   newId,
 } from './state.js';
 import { recalculate, clampStars } from './scoring.js';
-import { grantOwed, pityDry, starterOwed, collection, STARTER_POINTS } from './rewards.js';
+import { grantOwed, pityDry, starterOwed, collection, boughtCopies, STARTER_POINTS } from './rewards.js';
+import { indexForms, NO_FORMS, formsOf, displayName } from './forms.js';
+import * as shopRules from './shop.js';
 import * as stopwatch from './stopwatch.js';
 import { createSfx } from './sfx.js';
 import { h, clear, setText, fmtClock, fmtPoints } from './dom.js';
@@ -25,11 +27,12 @@ import * as pokedex from './views/pokedex.js';
 import * as history from './views/history.js';
 import * as stats from './views/stats.js';
 import * as settings from './views/settings.js';
+import * as shop from './views/shop.js';
 import { openRating } from './views/rate.js';
 import { showReveal } from './views/reveal.js';
 import { openStarter } from './views/starter.js';
 
-const VIEWS = { '': dashboard, pokedex, history, stats, settings };
+const VIEWS = { '': dashboard, pokedex, shop, history, stats, settings };
 
 const viewRoot = document.getElementById('view');
 const modalRoot = document.getElementById('modal-root');
@@ -51,6 +54,8 @@ const ctx = {
   state: defaultState(),
   /** Pokédex data: { species: [...], byId: Map, updatedAt }. */
   dex: { species: [], byId: new Map(), updatedAt: null },
+  /** Alternate forms and fusions: the index built from data/forms.json. */
+  forms: NO_FORMS,
   sfx: createSfx(() => ctx.state.settings.muted),
 
   save,
@@ -69,6 +74,11 @@ const ctx = {
   discardPending,
 
   setBuddy,
+  buyCopy,
+  buyCopies,
+  buyUpgrade,
+  fuseFusion,
+  unfuseFusion,
   toggleMute,
   exportBackup,
   importBackup,
@@ -96,6 +106,15 @@ async function boot() {
         h('p', {}, `data/pokedex.json failed to load (${error.message}). Check your connection and reload.`)),
     );
     return;
+  }
+
+  // Alternate forms are an extra: if the file cannot be read, the game still
+  // runs with plain Pokémon only.
+  try {
+    const response = await fetch('data/forms.json');
+    if (response.ok) ctx.forms = indexForms(await response.json());
+  } catch {
+    ctx.forms = NO_FORMS;
   }
 
   const loaded = load();
@@ -138,6 +157,13 @@ function registerServiceWorker() {
       for (const species of ctx.dex.species) {
         if (species.sprite !== false) urls.push(`assets/sprites/normal/${species.id}.png`);
         if (species.shiny !== false) urls.push(`assets/sprites/shiny/${species.id}.png`);
+      }
+      // Alternate forms and fusions share the sprite folders, under their own numbers.
+      const extras = [...ctx.forms.fusions];
+      for (const list of ctx.forms.bySpecies.values()) extras.push(...list);
+      for (const extra of extras) {
+        if (extra.sprite !== false) urls.push(`assets/sprites/normal/${extra.pid}.png`);
+        if (extra.shiny !== false) urls.push(`assets/sprites/shiny/${extra.pid}.png`);
       }
       setTimeout(() => {
         if (registration.active) registration.active.postMessage({ type: 'precache-art', urls });
@@ -344,6 +370,8 @@ function grantAndReveal(sessionId, withStarter) {
     rewards: state.rewards,
     species: ctx.dex.species,
     starter: state.starter,
+    shop: state.shop,
+    forms: ctx.forms,
     sessionId,
   });
   state.pity = { dry: pityDry(state.rewards) };
@@ -358,10 +386,162 @@ function grantAndReveal(sessionId, withStarter) {
   return true;
 }
 
+// ------------------------------------------------------------------ shop actions
+//
+// Each action asks for confirmation, applies the purchase through the pure
+// rules in shop.js, saves, redraws, and shows what was obtained. They resolve
+// to true when the purchase went through.
+
+/** Form keys unlocked by reaching a copy count (Zygarde), before and after a change. */
+function milestonesUnlocked(species) {
+  const unlocked = shopRules.unlockedForms(ctx.state, ctx.forms, species.id);
+  return formsOf(ctx.forms, species.id).filter((f) => f.kind === 'milestone' && unlocked.has(f.key));
+}
+
+/** Buy one copy of a Pokémon already found. */
+async function buyCopy(species) {
+  const offer = shopRules.copyOffer(ctx.state, ctx.forms, species);
+  if (!offer.ok) {
+    toast(offer.reason);
+    return false;
+  }
+  const ok = await confirm(`Buy one copy of ${species.name} for ${offer.price} Pokécoin${offer.price === 1 ? '' : 's'}?`, { yes: 'BUY' });
+  if (!ok) return false;
+  return applyCopies(species, 1);
+}
+
+/** Buy several copies at once (used for Zygarde, whose copies cost 1 coin). */
+async function buyCopies(species, count) {
+  const offer = shopRules.copyOffer(ctx.state, ctx.forms, species);
+  if (!offer.ok) {
+    toast(offer.reason);
+    return false;
+  }
+  const ok = await confirm(`Buy ${count} copies of ${species.name} for ${offer.price * count} Pokécoins?`, { yes: 'BUY' });
+  if (!ok) return false;
+  return applyCopies(species, count);
+}
+
+function applyCopies(species, count) {
+  const before = new Set(milestonesUnlocked(species).map((f) => f.key));
+  const heldBefore = shopRules.copiesOf(ctx.state, species.id).length;
+  let bought = 0;
+  try {
+    for (let i = 0; i < count; i++) {
+      shopRules.buyCopy(ctx.state, ctx.forms, species, { rng: randomFloat });
+      bought++;
+    }
+  } catch (error) {
+    if (bought === 0) {
+      toast(error.message);
+      return false;
+    }
+  }
+  save();
+  closeModal(true);
+  render();
+  ctx.sfx.play('save');
+
+  // Show the copies worth showing: a single purchase always, and from a bulk
+  // purchase the shiny one. Then any form the new total has unlocked.
+  // Each is told which copy it was, since only some of a bulk purchase are shown.
+  const copies = boughtCopies(ctx.state.shop).slice(-bought);
+  copies.forEach((copy, i) => {
+    copy.copyNumber = heldBefore + i + 1;
+  });
+  const reveals = bought === 1 ? copies : copies.filter((copy) => copy.shiny);
+  for (const form of milestonesUnlocked(species)) {
+    if (!before.has(form.key)) reveals.push({ dexId: species.id, tier: species.tier, form: form.key, shiny: false, unlockedForm: true });
+  }
+  if (reveals.length > 0) showReveal(ctx, reveals);
+  else toast(`+${bought} ${species.name} COPIES`);
+  return true;
+}
+
+/** Buy an upgrade form (Mega, Gigantamax ...) for a Pokémon. */
+async function buyUpgrade(species, form) {
+  const offer = shopRules.upgradeOffer(ctx.state, ctx.forms, species, form);
+  if (!offer.ok) {
+    toast(offer.owned ? 'ALREADY UNLOCKED' : offer.reason);
+    return false;
+  }
+  const name = displayName(species.name, form);
+  const ok = await confirm(`Unlock ${name} for ${offer.price} Pokécoins? It stays unlocked for ${species.name} for good.`, { yes: 'UNLOCK' });
+  if (!ok) return false;
+  shopRules.buyUpgrade(ctx.state, ctx.forms, species, form);
+  save();
+  closeModal(true);
+  render();
+  ctx.sfx.play('save');
+  showReveal(ctx, [{ dexId: species.id, tier: species.tier, form: form.key, shiny: false, unlockedForm: true }]);
+  return true;
+}
+
+/** Make a fusion. The dialog spells out what it costs and what comes back. */
+async function fuseFusion(fusion) {
+  const offer = shopRules.fusionOffer(ctx.state, ctx.forms, fusion);
+  if (!offer.ok) {
+    toast(offer.active ? 'ALREADY FUSED' : offer.reason);
+    return false;
+  }
+  const base = ctx.dex.byId.get(fusion.base);
+  const partner = ctx.dex.byId.get(fusion.partner);
+  const ok = await confirm(
+    `Fuse ${base.name} and ${partner.name} into ${fusion.label}? This costs ${offer.price} Pokécoins and sets aside one copy of each. If you unfuse later you get the two copies back, but NOT the ${offer.price} Pokécoins.`,
+    { yes: 'FUSE' },
+  );
+  if (!ok) return false;
+  shopRules.fuse(ctx.state, ctx.forms, fusion);
+  save();
+  closeModal(true);
+  render();
+  ctx.sfx.play('save');
+  showReveal(ctx, [{ fusion: fusion.id, shiny: false, tier: 'legendary', unlockedForm: true }]);
+  return true;
+}
+
+/** Undo a fusion: the copies come back, the coins do not. */
+async function unfuseFusion(fusion) {
+  const offer = shopRules.unfuseOffer(ctx.state, fusion);
+  if (!offer.ok) {
+    toast(offer.reason);
+    return false;
+  }
+  const base = ctx.dex.byId.get(fusion.base);
+  const partner = ctx.dex.byId.get(fusion.partner);
+  const ok = await confirm(
+    `Unfuse ${fusion.label}? You get one copy of ${base.name} and one of ${partner.name} back. The ${shopRules.PRICES.fusion} Pokécoins you paid are NOT refunded, and fusing again will cost ${shopRules.PRICES.fusion} more.`,
+    { yes: 'UNFUSE', danger: true },
+  );
+  if (!ok) return false;
+  shopRules.unfuse(ctx.state, fusion);
+  save();
+  closeModal(true);
+  render();
+  toast('UNFUSED. BOTH COPIES RETURNED.');
+  return true;
+}
+
+/** Uniform float in [0, 1) from the platform's cryptographic generator. */
+function randomFloat() {
+  const buffer = new Uint32Array(1);
+  crypto.getRandomValues(buffer);
+  return buffer[0] / 4294967296;
+}
+
 // ------------------------------------------------------------------ misc actions
 
-function setBuddy(dexId, shiny) {
-  ctx.state.buddy = { dexId, shiny: Boolean(shiny) };
+/**
+ * Choose the buddy: a Pokémon, optionally in one of its forms, or a fusion.
+ * @param {{dexId?: number, form?: string, fusion?: number, shiny?: boolean}} ref
+ */
+function setBuddy(ref) {
+  const shiny = Boolean(ref.shiny);
+  if (ref.fusion) ctx.state.buddy = { fusion: ref.fusion, shiny };
+  else {
+    ctx.state.buddy = { dexId: ref.dexId, shiny };
+    if (ref.form && ref.form !== 'base') ctx.state.buddy.form = ref.form;
+  }
   save();
   ctx.sfx.play('save');
 }

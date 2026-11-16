@@ -23,6 +23,8 @@ Everything is saved in your browser. There is no account and no server.
 | **Rewards** | A random Pokémon every 100 points: 94% common, 5% legendary, 1% mythical. 20 rewards without a legendary guarantees one. Nothing is decided until you reach the mark; then a silhouette appears and you throw the ball to find out. Your first 6 come from generation 1, the next 6 from generations 1–2, the next 6 from generations 1–4, then anything goes. Evolution families unlock in Pokédex order (Weedle, then Kakuna, then Beedrill). |
 | **Copies** | Up to 7 of a common, 5 of a legendary, 2 of a mythical. The last copy is shiny. |
 | **Chud** | Chud time lowers your score but never takes a Pokémon away. The next reward comes when you pass your previous best. |
+| **Pokécoins** | Every reward also gives 1 Pokécoin. The Shop sells extra copies of Pokémon you have found (5 / 20 / 120), upgrade forms such as Mega and Gigantamax (150), and fusions (150). |
+| **Forms** | Regional and other alternate forms arrive with later copies of a Pokémon, one new form per copy. Any form you have unlocked, and any fusion, can be your buddy. |
 
 The dashboard shows your chad and chud time for the last 7 days, and links
 to a **Pokédex** (everything you have found, plus a Shinies tab and your
@@ -92,6 +94,22 @@ repositories.
 
 Details: [documentation/pokedex-updater.md](documentation/pokedex-updater.md).
 
+### Alternate forms do not fully auto-update
+
+The updater also keeps `data/forms.json` (Megas, Gigantamax, regional forms,
+fusions) up to date, but only partly on its own. PokeAPI says which forms
+exist and which are Megas; it does not say which are paid upgrades here,
+which two Pokémon make a fusion, or what a form should be called.
+
+- **Picked up automatically:** a new Mega, a new Gigantamax, and any other
+  new form (it becomes a free alternate form).
+- **Needs a manual edit** to `tools/forms_rules.json`: a new fusion, a new
+  kind of paid upgrade, display labels, forms to leave out, and anything
+  about Zygarde.
+
+So after a new game adds forms, check the pull request the workflow opens and
+adjust `tools/forms_rules.json` if something landed in the wrong group.
+
 ## Documentation
 
 | File | What it covers |
@@ -99,6 +117,7 @@ Details: [documentation/pokedex-updater.md](documentation/pokedex-updater.md).
 | [documentation/architecture.md](documentation/architecture.md) | How the code is organised and how data flows through it |
 | [documentation/scoring.md](documentation/scoring.md) | Points formula, display multiplier, the high-water rule |
 | [documentation/rewards.md](documentation/rewards.md) | Starter, tiers, odds, caps, shinies, pity |
+| [documentation/shop.md](documentation/shop.md) | Pokécoins, the shop, alternate forms, fusions, Zygarde |
 | [documentation/stopwatch.md](documentation/stopwatch.md) | Stopwatch states, pauses, the 35-minute break limit |
 | [documentation/pokedex-updater.md](documentation/pokedex-updater.md) | The Python updater and the monthly workflow |
 | [documentation/storage.json.md](documentation/storage.json.md) | The saved/exported JSON, field by field, and how to edit it |

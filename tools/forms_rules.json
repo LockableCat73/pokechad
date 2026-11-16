@@ -1,0 +1,64 @@
+{
+  "_readme": [
+    "Hand-maintained rules that tell tools/update_pokedex.py how to sort PokeAPI's alternate forms.",
+    "PokeAPI says which forms exist and which are Megas, but not which are paid upgrades, which",
+    "two Pokemon make a fusion, or what to call a form. Those decisions live here.",
+    "",
+    "What needs NO edit here: a new Mega (PokeAPI flags it), a new form whose name ends in one of",
+    "upgradeForms (e.g. a new Gigantamax), and any other new form (it becomes a free alternate form).",
+    "What DOES need an edit: a new fusion, a new kind of paid upgrade, a nicer display label,",
+    "or a form that should be left out.",
+    "See documentation/pokedex-updater.md."
+  ],
+
+  "upgradeForms": [
+    "gmax", "primal", "crowned", "school", "hero", "unbound",
+    "ultra", "eternamax", "ash", "terastal", "stellar", "blade", "zen", "pirouette"
+  ],
+
+  "fusions": [
+    { "pokemon": "kyurem-white", "label": "White Kyurem", "with": "reshiram" },
+    { "pokemon": "kyurem-black", "label": "Black Kyurem", "with": "zekrom" },
+    { "pokemon": "necrozma-dusk", "label": "Dusk Mane Necrozma", "with": "solgaleo" },
+    { "pokemon": "necrozma-dawn", "label": "Dawn Wings Necrozma", "with": "lunala" },
+    { "pokemon": "calyrex-ice", "label": "Ice Rider Calyrex", "with": "glastrier" },
+    { "pokemon": "calyrex-shadow", "label": "Shadow Rider Calyrex", "with": "spectrier" }
+  ],
+
+  "overrides": {
+    "zygarde-10": { "key": "10", "label": "10%", "kind": "milestone" },
+    "zygarde-complete": { "key": "complete", "label": "Complete", "kind": "milestone" },
+    "zygarde-mega": { "key": "mega", "label": "Mega", "kind": "upgrade", "requires": { "form": "complete" } },
+    "necrozma-ultra": { "requires": { "fusionOf": "necrozma" } }
+  },
+
+  "exclude": [
+    "*-totem", "*-totem-*",
+    "pikachu-*-cap", "pikachu-rock-star", "pikachu-belle", "pikachu-pop-star",
+    "pikachu-phd", "pikachu-libre", "pikachu-cosplay",
+    "*-starter",
+    "*-power-construct",
+    "greninja-battle-bond",
+    "rockruff-own-tempo",
+    "minior-*-meteor",
+    "koraidon-*-build",
+    "miraidon-*-mode"
+  ],
+
+  "labels": {
+    "alola": "Alolan",
+    "galar": "Galarian",
+    "galar-standard": "Galarian",
+    "hisui": "Hisuian",
+    "paldea": "Paldean",
+    "paldea-combat-breed": "Paldean Combat",
+    "paldea-blaze-breed": "Paldean Blaze",
+    "paldea-aqua-breed": "Paldean Aqua",
+    "gmax": "Gigantamax",
+    "family-of-three": "Family of Three",
+    "pom-pom": "Pom-Pom",
+    "low-key": "Low Key",
+    "dada": "Dada",
+    "noice": "Noice"
+  }
+}
