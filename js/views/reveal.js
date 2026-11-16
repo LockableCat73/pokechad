@@ -7,7 +7,8 @@
  *
  *   1. encounter  a black silhouette appears: "WHO'S THAT POKéMON?"
  *   2. throw      the player presses THROW POKé BALL; the ball arcs in, hits,
- *                 drops, wobbles three times and clicks shut with three stars
+ *                 drops, wobbles three times with its centre button blinking
+ *                 red on each shake, and clicks shut with three stars
  *   3. reveal     the ball opens and the Pokémon is shown in colour with its
  *                 name, tier, copy number and a shiny sparkle if it is one
  *
@@ -94,7 +95,11 @@ export function showReveal(ctx, granted) {
 
     const ball = h('div', { class: 'stage-ball throw-x' },
       h('span', { class: 'stage-ball-y' },
-        h('span', { class: 'stage-ball-spin' }, icon('pokeball', { scale: 3, label: 'Poké Ball' }))));
+        h('span', { class: 'stage-ball-spin' },
+          icon('pokeball', { scale: 3, label: 'Poké Ball' }),
+          // Overlay on the centre button; the stylesheet blinks it red in
+          // step with each shake while the ball has the "wobble" class.
+          h('span', { class: 'ball-button' }))));
     stage.append(ball);
     name.textContent = '. . .';
     ctx.sfx.play('throw');

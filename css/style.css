@@ -513,9 +513,12 @@ button, input, select, textarea { font: inherit; color: inherit; text-transform:
 /* ---------------------------------------------------------------- dialogs */
 
 #modal-root { position: fixed; inset: 0; z-index: 50; }
+/* Dialogs stack as sibling layers. Each layer is its own stacking context
+   (isolation), so anything raised inside one dialog, such as the selected
+   rating star, can never show through a dialog opened on top of it. */
 .modal-layer {
   position: absolute; inset: 0; display: grid; place-items: center; padding: 16px;
-  background: rgba(16, 12, 20, 0.72); overflow-y: auto;
+  background: rgba(16, 12, 20, 0.72); overflow-y: auto; isolation: isolate;
 }
 .modal { width: 100%; max-width: 440px; padding: 20px; margin: 8px; }
 .modal-small { max-width: 360px; }
@@ -592,6 +595,11 @@ button, input, select, textarea { font: inherit; color: inherit; text-transform:
 .stage-ball { position: absolute; left: 88px; top: 104px; width: 48px; height: 48px; }
 .stage-ball.throw-x { animation: throw-x 0.6s steps(12, jump-none) forwards; }
 .stage-ball-y, .stage-ball-spin { display: block; }
+.stage-ball-spin { position: relative; }
+/* Sits exactly over the ball's white centre button: bitmap columns 6-9,
+   rows 7-8, drawn at 3x. It blinks red each time the ball hops to a side. */
+.ball-button { position: absolute; left: 18px; top: 21px; width: 12px; height: 6px; background: transparent; }
+.stage-ball.wobble .ball-button { animation: button-flash 0.5s step-end 3; }
 .stage-ball.throw-x .stage-ball-y { animation: throw-y 0.6s forwards; }
 .stage-ball.throw-x .stage-ball-spin { animation: spin 0.3s step-end 2; }
 .stage-ball.drop { animation: drop 0.25s steps(4, jump-none) forwards; }
@@ -682,6 +690,15 @@ details summary { cursor: pointer; font-size: 8px; }
   50% { transform: translate(0, 0); }
   75% { transform: translate(8px, -4px); }
   100% { transform: translate(0, 0); }
+}
+/* Same length, repeats and stepped timing as wobble, so the two stay in
+   step: red while hopped left or right, white (clear) at rest. */
+@keyframes button-flash {
+  0% { background: transparent; }
+  25% { background: #d83030; }
+  50% { background: transparent; }
+  75% { background: #d83030; }
+  100% { background: transparent; }
 }
 @keyframes caught { 0% { transform: translateY(-4px); } 100% { transform: translateY(0); } }
 @keyframes star-left { 0% { transform: translate(0, 0); opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(-40px, -36px); opacity: 0; } }
