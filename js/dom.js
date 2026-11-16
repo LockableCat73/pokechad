@@ -32,8 +32,37 @@ function append(el, children) {
   for (const child of children) {
     if (child === null || child === undefined || child === false) continue;
     if (Array.isArray(child)) append(el, child);
-    else el.append(child instanceof Node ? child : String(child));
+    else if (child instanceof Node) el.append(child);
+    else el.append(...textParts(String(child)));
   }
+}
+
+/**
+ * The page shows all text in capitals, but "é" stays small, as in POKéMON
+ * and POKéDEX (the font's capital É is a squat letter that looks wrong in
+ * those words). Any é in a string is wrapped in a span that opts out of the
+ * capitals; everything else is returned as plain text.
+ *
+ * @param {string} text
+ * @returns {Array<string|HTMLElement>}
+ */
+function textParts(text) {
+  if (!text.includes('é')) return [text];
+  return text.split(/(é)/).filter(Boolean).map((part) => {
+    if (part !== 'é') return part;
+    const span = document.createElement('span');
+    span.className = 'lc';
+    span.textContent = part;
+    return span;
+  });
+}
+
+/**
+ * Replace an element's text, keeping any "é" small. Use this instead of
+ * `el.textContent = ...` wherever the text might contain one.
+ */
+export function setText(el, text) {
+  el.replaceChildren(...textParts(String(text)));
 }
 
 /** Remove every child of an element and return it. */

@@ -22,7 +22,9 @@ takes a Pokémon away.
 - Unlocks once, when the high-water mark first reaches `STARTER_POINTS` (1).
   In practice that is right after your first session that leaves the score
   positive.
-- It is a choice, not a roll: `STARTERS = [1, 4, 7, 25]`.
+- It is a choice, not a roll: `STARTERS = [1, 4, 7, 25]`. The option you
+  pick is highlighted in that Pokémon's own colour, taken from the `color`
+  field in the data (green, red, blue, yellow).
 - It is an **extra** reward. It is stored in `state.starter`, separate from
   the rolled `state.rewards`, and does not shift the rewards at 100, 200, …
 - It counts as one copy of its species. Choosing Charmander means six more
@@ -69,18 +71,54 @@ starts with familiar faces and opens up as you go.
 
 The table lives in `EARLY_RANGES`; `dexLimit(rewardNumber)` reads it.
 
+## Evolution families
+
+A species you have never held can only be rolled once you hold the member of
+its evolution family that comes before it **in Pokédex order**.
+
+| Family | Unlock order |
+|---|---|
+| Weedle line | Weedle (#13) → Kakuna (#14) → Beedrill (#15) |
+| Pikachu line | Pikachu (#25) → Raichu (#26) → Pichu (#172) |
+| Eevee line | Eevee (#133) → Vaporeon (#134) → Jolteon (#135) → Flareon (#136) → Espeon (#196) → … → Sylveon (#700) |
+
+- It is Pokédex order, not evolution order. Pichu evolves into Pikachu but
+  has a higher number, so it comes last.
+- It gates only the **first copy** of a species. Once you hold one Beedrill,
+  the other six (including the shiny) roll freely, whatever happens to Weedle
+  and Kakuna.
+- Branching families (Eevee) are simply walked in number order.
+- A family of one (Mewtwo, Tauros) is never gated.
+- The starter counts as held: a Charmander starter opens Charmeleon.
+- A species with no sprite yet is skipped, so it cannot block its family.
+- Old or hand-edited saves that already hold members out of order are left
+  alone; the rule only decides what can be unlocked next.
+
+**Nothing about families is written by hand.** Each species in
+`data/pokedex.json` has a `family` number, which is the id of its evolution
+chain on PokeAPI, fetched by the updater. The order inside a family is
+computed from the Pokédex numbers when the page loads (`familyGates()`). When
+PokeAPI adds a new Pokémon to an existing line, it gets that line's number
+and slots in by its Pokédex number with no code change.
+
+No evolution family mixes tiers in the current data, so the rule cannot leave
+a tier with nothing to give.
+
 ## How a roll works
 
 `rollReward({ species, rewards, starter, rng })`:
 
-0. **Range.** Look up the Pokédex limit for this reward (see above).
+0. **Range and family.** Look up the Pokédex limit for this reward, and treat
+   a never-held species as available only if it is next in its family (see
+   the two sections above).
 1. **Pity check.** If the pity counter has reached `PITY_LIMIT` (20) and at
    least one legendary is still available, the tier is forced to legendary.
 2. **Otherwise roll the tier** by weight, 94 / 5 / 1. A tier in which every
    species is already at its cap is left out, and the remaining tiers share
    the odds in proportion.
 3. **Pick the species** uniformly at random from that tier's eligible pool:
-   species inside the allowed range, below their cap, that have a sprite.
+   species inside the allowed range, below their cap, with a sprite, and
+   either already held or next in line in their family.
 4. **Shiny?** The copy is shiny if it brings you to the tier's cap. Every
    earlier copy is normal. There is no random shiny chance.
 
@@ -129,8 +167,8 @@ reward, not a preview.
    in. Its name and tier are not shown.
 2. **Throw Poké Ball.** Pressing the button throws the ball in an arc. It
    hits, the silhouette vanishes in a flash, and the ball drops, shuffles
-   three times and clicks shut ("Gotcha!"). About three seconds; "Skip" jumps
-   ahead.
+   three times and clicks shut: three stars pop out of it and "Gotcha!"
+   appears. About three seconds; "Skip" jumps ahead.
 3. **Reveal.** The Pokémon is shown in colour with its name, tier, copy
    number, and sparkles on a night-sky stage if it is shiny.
 
@@ -163,8 +201,11 @@ Each reward is stored as:
 ## What "every Pokémon is available" means
 
 Once past the early game, the pool is every species in `data/pokedex.json`
-with a sprite: all 1,025 at the time of writing (931 common, 71 legendary, 23 mythical). Alternate forms
-(regional forms, Mega Evolutions and so on) are not separate entries. When
+with a sprite: all 1,025 at the time of writing (931 common, 71 legendary, 23 mythical). Alternate forms are not separate entries and cannot be collected: no Mega
+Evolutions, Primal forms, Gigantamax, regional forms, fusions (such as the
+Kyurem and Necrozma fusions) or crowned forms. Each species appears once, in
+its default form. Zacian's Crowned Sword form is used only as the picture on
+the Chad button. When
 PokeAPI adds species, the updater adds them to the pool; see
 [pokedex-updater.md](pokedex-updater.md).
 

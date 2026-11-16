@@ -12,6 +12,10 @@
  *     set at 8, 16, 24 or 32px, with whole-pixel line heights and no letter
  *     spacing. Any other size (10px, 12px ...) makes the browser stretch the
  *     glyphs unevenly and the text looks squashed.
+ *   - Case: everything is displayed in capitals (text-transform on the body).
+ *     The font's lowercase letters are as wide as its capitals but only about
+ *     5 pixels tall, so mixed-case text looks squat. Only the logo opts out,
+ *     to keep its small "é".
  *
  * Light and dark: every colour is a custom property. The dark values are
  * applied automatically from the system setting (prefers-color-scheme);
@@ -112,7 +116,22 @@
 
 * { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Phones flash a translucent blue box over anything tapped. Switch it off
+     everywhere (the property is inherited); pressed buttons already move and
+     keyboard focus still gets its gold outline. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Things you press are not text to select: a long press or a quick double
+   tap must not leave their label highlighted. */
+button, a, summary, label, .sprite, .px {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 
 body {
   margin: 0;
@@ -120,6 +139,7 @@ body {
   font-family: var(--font);
   font-size: 8px;
   line-height: 16px;
+  text-transform: uppercase;
   color: var(--text);
   background-color: var(--bg);
   /* A barely-there pixel weave so large empty areas are not flat. */
@@ -150,7 +170,8 @@ h1 { font-size: 24px; line-height: 32px; font-weight: normal; }
 h2 { font-size: 16px; line-height: 24px; font-weight: normal; }
 ol, ul { list-style: none; }
 a { color: inherit; }
-button, input { font: inherit; color: inherit; }
+/* Browsers reset form controls to their own font and to text-transform: none. */
+button, input, select, textarea { font: inherit; color: inherit; text-transform: inherit; }
 [hidden] { display: none !important; }
 
 .visually-hidden {
@@ -175,7 +196,7 @@ button, input { font: inherit; color: inherit; }
 /* The logo keeps its own fixed outline colour so it reads the same in both themes. */
 .logo {
   --o: #282030;
-  font-size: 24px; line-height: 24px; text-decoration: none; color: #fff;
+  font-size: 24px; line-height: 24px; text-decoration: none; text-transform: none; color: #fff;
   text-shadow:
     4px 0 0 var(--o), -4px 0 0 var(--o), 0 4px 0 var(--o), 0 -4px 0 var(--o),
     4px 4px 0 var(--o), -4px 4px 0 var(--o), 4px -4px 0 var(--o), -4px -4px 0 var(--o),
@@ -183,6 +204,28 @@ button, input { font: inherit; color: inherit; }
   padding: 4px 4px 8px;
 }
 .logo span { color: var(--gold); }
+
+/* The one letter that stays small in the all-capitals text: POKéMON, POKéDEX. */
+.lc { text-transform: none; }
+
+/*
+ * Themed scrollbars for the scrolling areas inside dialogs and panels:
+ * square, in the border colour, no rounded thumb.
+ */
+/* Firefox has no scrollbar pseudo-elements, so it gets the standard colours.
+   Chrome and Safari must NOT be given these: once they are set, those
+   browsers ignore the ::-webkit-scrollbar rules below and draw their own
+   rounded thumb. */
+@supports not selector(::-webkit-scrollbar) {
+  .reveal-grid, .copies, .table-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) var(--paper-2);
+  }
+}
+.reveal-grid::-webkit-scrollbar, .copies::-webkit-scrollbar, .table-scroll::-webkit-scrollbar { width: 12px; height: 12px; }
+.reveal-grid::-webkit-scrollbar-track, .copies::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track { background: var(--paper-2); }
+.reveal-grid::-webkit-scrollbar-thumb, .copies::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb { background: var(--muted); border: 0; border-radius: 0; }
+.reveal-grid::-webkit-scrollbar-corner, .copies::-webkit-scrollbar-corner, .table-scroll::-webkit-scrollbar-corner { background: var(--paper-2); }
 
 #view { display: flex; flex-direction: column; gap: 16px; padding-bottom: 24px; outline: none; }
 
@@ -480,6 +523,7 @@ button, input { font: inherit; color: inherit; }
 .modal p { font-size: 8px; }
 
 .notice { padding: 8px; font-size: 8px; background: var(--warn-bg); box-shadow: 0 0 0 4px var(--edge); margin: 4px; }
+.notice-error { color: #fff; background: #d83030; }
 
 .star-picker { display: flex; gap: 12px; align-items: center; padding: 8px; }
 .star-btn {
@@ -504,7 +548,28 @@ button, input { font: inherit; color: inherit; }
   box-shadow: 0 -4px 0 0 var(--b), 0 4px 0 0 var(--b), -4px 0 0 0 var(--b), 4px 0 0 0 var(--b);
 }
 .starter-option:hover { background: var(--btn-hover); }
-.starter-option.selected { --b: var(--edge); background: var(--legend-bg); box-shadow: 0 -4px 0 0 var(--b), 0 4px 0 0 var(--b), -4px 0 0 0 var(--b), 4px 0 0 0 var(--b), 0 0 0 8px var(--gold); }
+/*
+ * The chosen starter is highlighted in its own Pokédex colour. data-color
+ * comes from the species data (PokeAPI's colour names), and --mon is the
+ * pixel-palette shade used for it.
+ */
+[data-color='red'] { --mon: #e8603c; }
+[data-color='blue'] { --mon: #3890d8; }
+[data-color='green'] { --mon: #48a868; }
+[data-color='yellow'] { --mon: #f8c820; }
+[data-color='brown'] { --mon: #a87038; }
+[data-color='purple'] { --mon: #9060c0; }
+[data-color='pink'] { --mon: #e878a8; }
+[data-color='gray'] { --mon: #8890a0; }
+[data-color='white'] { --mon: #d8d8e0; }
+[data-color='black'] { --mon: #585868; }
+.starter-option.selected {
+  --b: var(--edge);
+  background: color-mix(in srgb, var(--mon, var(--gold)) 30%, var(--paper));
+  box-shadow: 0 -4px 0 0 var(--b), 0 4px 0 0 var(--b), -4px 0 0 0 var(--b), 4px 0 0 0 var(--b), 0 0 0 8px var(--mon, var(--gold));
+}
+.starter-confirm[data-color]:not(:disabled) { background: var(--mon); box-shadow: var(--b), inset -4px -4px 0 0 color-mix(in srgb, var(--mon) 70%, #000); }
+.starter-confirm[data-color]:not(:disabled):hover { background: color-mix(in srgb, var(--mon) 85%, #fff); }
 
 /*
  * The reward encounter. The stage keeps one fixed palette in both themes so
@@ -532,6 +597,11 @@ button, input { font: inherit; color: inherit; }
 .stage-ball.drop { animation: drop 0.25s steps(4, jump-none) forwards; }
 .stage-ball.wobble { top: 120px; animation: wobble 0.5s step-end 3; }
 .stage-ball.caught { top: 120px; animation: caught 0.3s steps(2, jump-none); }
+/* Three stars pop out of the ball when it clicks shut. */
+.catch-star { position: absolute; left: 101px; top: 116px; z-index: 2; opacity: 0; animation: 0.5s steps(5, jump-none) forwards; }
+.catch-star.c0 { animation-name: star-left; }
+.catch-star.c1 { animation-name: star-up; animation-delay: 0.06s; }
+.catch-star.c2 { animation-name: star-right; animation-delay: 0.12s; }
 .flash { position: absolute; inset: 0; background: #fff; animation: flash 0.4s steps(4, jump-none) forwards; pointer-events: none; z-index: 3; }
 .sparkle { position: absolute; animation: twinkle 0.8s steps(2, jump-none) infinite; z-index: 2; }
 .sparkle.s0 { left: 12px; top: 16px; }
@@ -543,7 +613,7 @@ button, input { font: inherit; color: inherit; }
 .reveal-name { font-size: 16px; line-height: 24px; min-height: 48px; }
 .reveal-footer { align-self: stretch; display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-height: 92px; }
 .reveal-footer .btn-quiet { align-self: center; }
-.reveal-grid { align-self: stretch; max-height: 50vh; overflow-y: auto; }
+.reveal-grid { align-self: stretch; max-height: 50vh; overflow-y: auto; padding-right: 12px; }
 
 #toast {
   position: fixed; left: 50%; bottom: 24px; z-index: 60; transform: translate(-50%, 200%);
@@ -614,6 +684,9 @@ details summary { cursor: pointer; font-size: 8px; }
   100% { transform: translate(0, 0); }
 }
 @keyframes caught { 0% { transform: translateY(-4px); } 100% { transform: translateY(0); } }
+@keyframes star-left { 0% { transform: translate(0, 0); opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(-40px, -36px); opacity: 0; } }
+@keyframes star-up { 0% { transform: translate(0, 0); opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(0, -52px); opacity: 0; } }
+@keyframes star-right { 0% { transform: translate(0, 0); opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(40px, -36px); opacity: 0; } }
 @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes pop { 0% { transform: translateY(16px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
 @keyframes twinkle { 0% { opacity: 1; } 100% { opacity: 0; } }

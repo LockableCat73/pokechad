@@ -47,6 +47,49 @@ export function dexLimit(rewardNumber) {
 }
 
 /**
+ * Evolution families unlock in Pokédex order.
+ *
+ * Every species in data/pokedex.json carries `family`, the id of its
+ * evolution chain on PokeAPI (written by tools/update_pokedex.py; nothing
+ * about families is listed by hand). Within a family the members are put in
+ * Pokédex-number order, and a species you have never held can only be rolled
+ * once you hold the member before it:
+ *
+ *   Weedle (#13) -> Kakuna (#14) -> Beedrill (#15)
+ *   Pikachu (#25) -> Raichu (#26) -> Pichu (#172)     Pokédex order, not evolution order
+ *
+ * This only gates the FIRST copy of a species. Once you hold one Beedrill,
+ * further Beedrill (including the shiny) roll freely, whatever happens to
+ * Weedle and Kakuna.
+ *
+ * @param {Array<{id:number, family?:number|null, sprite?:boolean}>} species
+ * @returns {Map<number, number>} species id -> id of the family member that
+ *   must be held first. Species that open their family, or have no family
+ *   recorded, are absent from the map.
+ */
+export function familyGates(species) {
+  let gates = gateCache.get(species);
+  if (gates) return gates;
+  const families = new Map();
+  for (const s of species) {
+    // A species that cannot be rolled (no sprite yet) must not block the rest.
+    if (s.family === undefined || s.family === null || s.sprite === false) continue;
+    if (!families.has(s.family)) families.set(s.family, []);
+    families.get(s.family).push(s.id);
+  }
+  gates = new Map();
+  for (const members of families.values()) {
+    members.sort((a, b) => a - b);
+    for (let i = 1; i < members.length; i++) gates.set(members[i], members[i - 1]);
+  }
+  gateCache.set(species, gates);
+  return gates;
+}
+
+/** The Pokédex list never changes while the page is open, so compute once. */
+const gateCache = new WeakMap();
+
+/**
  * The starter: a one-off extra reward, chosen by the player rather than
  * rolled, that sits at 1 point on the track (in practice, right after the
  * first session that leaves the score positive). It is in addition to the
@@ -138,22 +181,28 @@ export function owedRewards(highWater, rewards) {
 }
 
 /**
- * Species in a tier that can still be awarded: they have a sprite, are below
- * the tier's cap, and are within the Pokédex range currently allowed.
+ * Species in a tier that can still be awarded. A species qualifies when it
+ *   - has a sprite,
+ *   - is below the tier's cap,
+ *   - is within the Pokédex range currently allowed (see dexLimit), and
+ *   - is either already held, or next in line in its family (see familyGates).
  *
  * @param {Array<{id:number, tier:string, sprite:boolean}>} species
  * @param {Map<number, number>} counts From countOwned().
  * @param {string} tier
- * @param {number} [maxDex] Highest Pokédex number allowed (see dexLimit).
+ * @param {number} [maxDex] Highest Pokédex number allowed.
  */
 export function eligible(species, counts, tier, maxDex = Infinity) {
   const cap = TIERS[tier].cap;
+  const gates = familyGates(species);
+  const held = (id) => (counts.get(id) || 0) > 0;
   return species.filter(
     (s) =>
       s.tier === tier &&
       s.id <= maxDex &&
       s.sprite !== false &&
-      (counts.get(s.id) || 0) < cap,
+      (counts.get(s.id) || 0) < cap &&
+      (held(s.id) || !gates.has(s.id) || held(gates.get(s.id))),
   );
 }
 
@@ -161,8 +210,9 @@ export function eligible(species, counts, tier, maxDex = Infinity) {
  * Roll one reward.
  *
  * 0. The Pokédex range for this reward is looked up (dexLimit): the first 18
- *    rolled rewards are limited to the older generations. This narrows which
- *    species can appear; it does not change the tier odds.
+ *    rolled rewards are limited to the older generations. New species must
+ *    also be next in line in their evolution family (familyGates). Both only
+ *    narrow which species can appear; neither changes the tier odds.
  * 1. If the pity counter has reached PITY_LIMIT and a legendary is still
  *    available, the tier is forced to legendary. Pity never gives a mythical.
  * 2. Otherwise the tier is rolled by weight (94 / 5 / 1). A tier with nothing

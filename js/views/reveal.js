@@ -7,7 +7,7 @@
  *
  *   1. encounter  a black silhouette appears: "WHO'S THAT POKéMON?"
  *   2. throw      the player presses THROW POKé BALL; the ball arcs in, hits,
- *                 drops, wobbles three times and clicks shut
+ *                 drops, wobbles three times and clicks shut with three stars
  *   3. reveal     the ball opens and the Pokémon is shown in colour with its
  *                 name, tier, copy number and a shiny sparkle if it is one
  *
@@ -25,7 +25,7 @@ import { TIERS, countOwned, collection } from '../rewards.js';
 const T_HIT = 600;
 const T_WOBBLE = 900;
 const T_CAUGHT = 2400;
-const T_OPEN = 2900;
+const T_OPEN = 3200;
 
 /**
  * @param {object} ctx     App context.
@@ -114,6 +114,8 @@ export function showReveal(ctx, granted) {
     later(T_CAUGHT, () => {
       ball.className = 'stage-ball caught';
       name.textContent = 'GOTCHA!';
+      // The classic catch: three stars pop out of the ball as it locks.
+      stage.append(...[0, 1, 2].map((i) => h('span', { class: `catch-star c${i}` }, icon('star', { scale: 2 }))));
       ctx.sfx.play('caught');
     });
     later(T_OPEN, reveal);

@@ -4,8 +4,10 @@
 What it does
 ------------
 1. Asks PokeAPI (https://pokeapi.co) for the list of every Pokémon species.
-2. Fetches details only for species that are not in ``data/pokedex.json`` yet
-   (``--refresh`` re-fetches every species, e.g. to pick up a reclassification).
+2. Fetches details only for species that are not in ``data/pokedex.json`` yet,
+   or whose entry is missing a field this version records (``--refresh``
+   re-fetches every species, e.g. to pick up a reclassification or a change
+   to an evolution family).
 3. Downloads any missing normal and shiny sprites into ``assets/sprites/``.
 4. Downloads the two dashboard button icons into ``assets/icons/``.
 5. Rewrites ``data/pokedex.json`` only when something actually changed, so a
@@ -46,6 +48,10 @@ ICONS = {
     "snorlax.png": f"{SPRITE_HOST}/143.png",
     "zacian-crowned.png": f"{SPRITE_HOST}/10188.png",
 }
+
+# Fields every species entry must carry. An existing entry without one of
+# them (written by an older version of this script) is fetched again.
+SPECIES_FIELDS = ("id", "slug", "name", "gen", "tier", "family", "color")
 
 USER_AGENT = "pokedex-updater/1.0 (python-urllib)"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -99,7 +105,16 @@ def tier_of(detail: dict) -> str:
 
 
 def species_entry(species_id: int) -> dict:
-    """Fetch one species from PokeAPI and reduce it to what the site needs."""
+    """Fetch one species from PokeAPI and reduce it to what the site needs.
+
+    ``family`` is the id of the species' evolution chain: every member of one
+    evolutionary line (Weedle, Kakuna, Beedrill; or Pichu, Pikachu, Raichu)
+    shares it. The site uses it to unlock a family in Pokédex order. It comes
+    straight from PokeAPI; nothing about families is written by hand.
+
+    ``color`` is PokeAPI's Pokédex colour for the species (red, blue, green,
+    yellow, ...). The site uses it to tint the starter choice.
+    """
     detail = fetch_json(f"{API}/pokemon-species/{species_id}/")
     english = next(
         (n["name"] for n in detail["names"] if n["language"]["name"] == "en"),
@@ -111,6 +126,10 @@ def species_entry(species_id: int) -> dict:
         "name": english,
         "gen": id_from_url(detail["generation"]["url"]),
         "tier": tier_of(detail),
+        "family": id_from_url(detail["evolution_chain"]["url"])
+        if detail.get("evolution_chain")
+        else None,
+        "color": detail["color"]["name"] if detail.get("color") else None,
     }
 
 
@@ -151,13 +170,22 @@ def main() -> int:
     existing = load_existing()
     listing = fetch_json(f"{API}/pokemon-species?limit=100000")
     all_ids = sorted(id_from_url(item["url"]) for item in listing["results"])
-    wanted = all_ids if args.refresh else [i for i in all_ids if i not in existing]
+    incomplete = [
+        i for i in all_ids if i in existing and any(f not in existing[i] for f in SPECIES_FIELDS)
+    ]
+    wanted = (
+        all_ids
+        if args.refresh
+        else [i for i in all_ids if i not in existing or i in incomplete]
+    )
     print(f"PokeAPI lists {len(all_ids)} species; fetching details for {len(wanted)}.")
 
     species = {i: dict(existing[i]) for i in all_ids if i in existing}
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for entry in pool.map(species_entry, wanted):
-            species[entry["id"]] = entry
+            # Keep the sprite flags already on record; they are refreshed below.
+            flags = {k: v for k, v in species.get(entry["id"], {}).items() if k in ("sprite", "shiny")}
+            species[entry["id"]] = {**entry, **flags}
 
     # Sprites: download what is missing, then record what is really on disk.
     def sync_sprites(species_id: int) -> tuple[int, bool, bool]:
@@ -213,14 +241,23 @@ def main() -> int:
     else:
         print("No changes to data/pokedex.json.")
 
-    print(f"Species: {len(ordered)}  {tiers}")
+    families = len({e["family"] for e in ordered if e.get("family") is not None})
+    print(f"Species: {len(ordered)}  {tiers}  Evolution families: {families}")
     print(f"New: {len(added)}  Changed: {len(changed)}")
     for entry in added[:20]:
         print(f"  + #{entry['id']} {entry['name']} ({entry['tier']})")
     if len(added) > 20:
         print(f"  ... and {len(added) - 20} more")
     for entry in changed[:20]:
-        print(f"  ~ #{entry['id']} {entry['name']}: {existing[entry['id']]} -> {entry}")
+        before = existing[entry["id"]]
+        fields = ", ".join(
+            f"{key} {before.get(key)!r} -> {value!r}"
+            for key, value in entry.items()
+            if before.get(key) != value
+        )
+        print(f"  ~ #{entry['id']} {entry['name']}: {fields}")
+    if len(changed) > 20:
+        print(f"  ... and {len(changed) - 20} more")
     if no_sprite:
         print(f"No sprite yet (kept out of the reward pool): {no_sprite}")
     if no_shiny:

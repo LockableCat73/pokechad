@@ -8,7 +8,7 @@ repository:
 
 | Path | Contents |
 |---|---|
-| `data/pokedex.json` | Every species: number, name, generation, tier, sprite flags |
+| `data/pokedex.json` | Every species: number, name, generation, tier, evolution family, colour, sprite flags |
 | `assets/sprites/normal/{id}.png` | Normal sprite, 96×96 |
 | `assets/sprites/shiny/{id}.png` | Shiny sprite, 96×96 |
 | `assets/icons/snorlax.png`, `zacian-crowned.png` | The two dashboard buttons |
@@ -27,8 +27,8 @@ anywhere; it finds the repository from its own location.
 
 | Option | Effect |
 |---|---|
-| *(none)* | Incremental: fetch details only for species not yet in `pokedex.json`, and download only sprites not yet on disk. Takes a few seconds when nothing is new. |
-| `--refresh` | Re-fetch every species. Use this to pick up a renamed or reclassified Pokémon. About a minute. |
+| *(none)* | Incremental: fetch details only for species not yet in `pokedex.json` (or whose entry lacks a field this version records), and download only sprites not yet on disk. Takes a few seconds when nothing is new. |
+| `--refresh` | Re-fetch every species. Picks up a renamed or reclassified Pokémon, or a change to an evolution family. About a minute. The monthly workflow uses this. |
 | `--workers N` | Parallel downloads (default 8). |
 
 It then prints a summary, for example:
@@ -36,7 +36,7 @@ It then prints a summary, for example:
 ```
 PokeAPI lists 1025 species; fetching details for 0.
 No changes to data/pokedex.json.
-Species: 1025  {'common': 931, 'legendary': 71, 'mythical': 23}
+Species: 1025  {'common': 931, 'legendary': 71, 'mythical': 23}  Evolution families: 540
 New: 0  Changed: 0
 ```
 
@@ -46,9 +46,16 @@ Commit whatever it changed under `data/` and `assets/`.
 
 1. **List species.** `GET /api/v2/pokemon-species?limit=100000`.
 2. **Fetch details** for the species it needs (`/pokemon-species/{id}/`) and
-   keep: `id`, `slug` (PokeAPI's name), `name` (English), `gen`, and `tier`.
+   keep: `id`, `slug` (PokeAPI's name), `name` (English), `gen`, `tier`,
+   `family` and `color`.
 3. **Tier.** `is_mythical` → `mythical`; otherwise `is_legendary` →
    `legendary`; otherwise `common`.
+   **Family.** The id at the end of the species' `evolution_chain` URL. All
+   members of one evolutionary line share it. The site uses it to unlock a
+   family in Pokédex order (see [rewards.md](rewards.md#evolution-families)).
+   No family is listed by hand anywhere.
+   **Colour.** PokeAPI's Pokédex colour name (`red`, `blue`, `green`,
+   `yellow`, ...). The site uses it to tint the starter choice.
 4. **Sprites.** For every species, download
    `sprites/pokemon/{id}.png` and `sprites/pokemon/shiny/{id}.png` from the
    PokeAPI sprites repository if the file is not already present. Files are
@@ -70,7 +77,7 @@ Network errors and rate limits are retried with backoff.
   "count": 1025,
   "tiers": { "common": 931, "legendary": 71, "mythical": 23 },
   "species": [
-    {"id": 1, "slug": "bulbasaur", "name": "Bulbasaur", "gen": 1, "tier": "common", "sprite": true, "shiny": true}
+    {"id": 1, "slug": "bulbasaur", "name": "Bulbasaur", "gen": 1, "tier": "common", "family": 1, "color": "green", "sprite": true, "shiny": true}
   ]
 }
 ```
@@ -95,11 +102,17 @@ If a species changes tier, copies you already hold keep the tier they were
 rolled with (it is stored on each reward). Future rolls and the copy cap use
 the new tier.
 
+If a new Pokémon joins an existing evolution family, it takes its place in
+that family by Pokédex number. Nothing you already hold is affected; it just
+becomes unlockable after the member before it.
+
 ## The monthly workflow
 
-`.github/workflows/update-pokedex.yml` runs the updater at 04:17 UTC on the
-1st of each month, and on demand from **Actions → Update Pokédex → Run
-workflow**.
+`.github/workflows/update-pokedex.yml` runs the updater with `--refresh` at
+04:17 UTC on the 1st of each month, and on demand from **Actions → Update
+Pokédex → Run workflow**. Because it re-reads every species, it picks up
+changes to existing Pokémon (tier, name, evolution family, colour) as well as
+new ones.
 
 **It never pushes to `main`.** If the updater changed anything, the workflow:
 

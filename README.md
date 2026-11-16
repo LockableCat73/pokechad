@@ -20,7 +20,7 @@ Everything is saved in your browser. There is no account and no server.
 | **Multiplier** | The stopwatch shows `1.05 × t^0.05 − 0.05` (never less than 1). It is a visual nudge to stay in the session and is not used in the maths. |
 | **Breaks** | Pause whenever you like; paused time does not count. A break longer than 35 minutes ends the session, with a red countdown over the last 5. |
 | **Starter** | Your first point lets you choose Bulbasaur, Charmander, Squirtle or Pikachu. |
-| **Rewards** | A random Pokémon every 100 points: 94% common, 5% legendary, 1% mythical. 20 rewards without a legendary guarantees one. Nothing is decided until you reach the mark; then a silhouette appears and you throw the ball to find out. Your first 6 come from generation 1, the next 6 from generations 1–2, the next 6 from generations 1–4, then anything goes. |
+| **Rewards** | A random Pokémon every 100 points: 94% common, 5% legendary, 1% mythical. 20 rewards without a legendary guarantees one. Nothing is decided until you reach the mark; then a silhouette appears and you throw the ball to find out. Your first 6 come from generation 1, the next 6 from generations 1–2, the next 6 from generations 1–4, then anything goes. Evolution families unlock in Pokédex order (Weedle, then Kakuna, then Beedrill). |
 | **Copies** | Up to 7 of a common, 5 of a legendary, 2 of a mythical. The last copy is shiny. |
 | **Chud** | Chud time lowers your score but never takes a Pokémon away. The next reward comes when you pass your previous best. |
 

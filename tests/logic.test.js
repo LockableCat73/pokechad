@@ -21,6 +21,8 @@ import {
   starterOwed,
   STARTERS,
   dexLimit,
+  familyGates,
+  eligible,
 } from '../js/rewards.js';
 import * as sw from '../js/stopwatch.js';
 import {
@@ -274,6 +276,98 @@ test('pity inside the early game still gives a legendary from the allowed range'
   const forced = rollReward({ species: dex, rewards: padded, rng: seeded(9) });
   assert.equal(forced.tier, 'legendary');
   assert.ok(forced.dexId <= dexLimit(padded.length + 1));
+});
+
+// ---------------------------------------------------------------- families
+
+const bySlug = (slug) => dex.find((s) => s.slug === slug);
+
+test('every species has an evolution family from the data, in Pokédex order', () => {
+  for (const s of dex) assert.ok(Number.isInteger(s.family), `family of #${s.id}`);
+  const gates = familyGates(dex);
+  const gate = (slug) => (gates.has(bySlug(slug).id) ? dex[gates.get(bySlug(slug).id) - 1].slug : null);
+  assert.equal(gate('weedle'), null);
+  assert.equal(gate('kakuna'), 'weedle');
+  assert.equal(gate('beedrill'), 'kakuna');
+  // Pokédex order, not evolution order: Pikachu, then Raichu, then Pichu.
+  assert.equal(gate('pikachu'), null);
+  assert.equal(gate('raichu'), 'pikachu');
+  assert.equal(gate('pichu'), 'raichu');
+  assert.equal(gate('vaporeon'), 'eevee');
+  assert.equal(gate('sylveon'), 'glaceon');
+  assert.equal(gate('mewtwo'), null); // a family of one
+  // Members of one family never straddle tiers, so a gate cannot strand a tier.
+  for (const [id, before] of gates) assert.equal(dex[id - 1].tier, dex[before - 1].tier);
+});
+
+test('a new species can only be rolled after the family member before it', () => {
+  const ids = (list) => new Set(list.map((s) => s.id));
+  const pool = (owned) => ids(eligible(dex, new Map(owned.map((slug) => [bySlug(slug).id, 1])), 'common'));
+  const has = (set, slug) => set.has(bySlug(slug).id);
+
+  const fresh = pool([]);
+  assert.ok(has(fresh, 'weedle') && has(fresh, 'pikachu'));
+  assert.ok(!has(fresh, 'kakuna') && !has(fresh, 'beedrill'));
+  assert.ok(!has(fresh, 'raichu') && !has(fresh, 'pichu'));
+
+  const one = pool(['weedle']);
+  assert.ok(has(one, 'weedle') && has(one, 'kakuna') && !has(one, 'beedrill'));
+
+  const two = pool(['weedle', 'kakuna']);
+  assert.ok(has(two, 'beedrill'));
+
+  // Copies of a species already held are never gated: with only Beedrill
+  // (from an old or hand-edited save) more Beedrill can come, and Kakuna
+  // still waits for Weedle.
+  const odd = pool(['beedrill']);
+  assert.ok(has(odd, 'beedrill') && has(odd, 'weedle') && !has(odd, 'kakuna'));
+
+  assert.ok(has(pool(['pikachu']), 'raichu') && !has(pool(['pikachu']), 'pichu'));
+  assert.ok(has(pool(['pikachu', 'raichu']), 'pichu'));
+});
+
+test('over long runs, first copies always arrive in family order', () => {
+  const gates = familyGates(dex);
+  let gatedFirsts = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const starter = { dexId: STARTERS[seed % 4], at: '2026-01-01T00:00:00.000Z', sessionId: null };
+    const rewards = [];
+    grantOwed({ highWater: 60_000, rewards, species: dex, starter, rng: seeded(seed) });
+    assert.equal(rewards.length, 600);
+    const held = new Set([starter.dexId]);
+    for (const r of rewards) {
+      if (!held.has(r.dexId) && gates.has(r.dexId)) {
+        assert.ok(held.has(gates.get(r.dexId)), `#${r.dexId} arrived before #${gates.get(r.dexId)} (seed ${seed})`);
+        gatedFirsts++;
+      }
+      held.add(r.dexId);
+    }
+  }
+  assert.ok(gatedFirsts > 500, 'later family members do get unlocked');
+});
+
+test('shiny copies are not held back by the family rule', () => {
+  // Beedrill held six times, Weedle and Kakuna never: the seventh is still rollable and shiny.
+  const tiny = [13, 14, 15].map((id) => ({ ...dex[id - 1] }));
+  const rewards = Array.from({ length: 6 }, () => ({ dexId: 15, tier: 'common' }));
+  const seen = new Set();
+  for (let seed = 1; seed <= 60; seed++) {
+    const roll = rollReward({ species: tiny, rewards, rng: seeded(seed) });
+    seen.add(roll.dexId);
+    if (roll.dexId === 15) assert.equal(roll.shiny, true);
+    assert.notEqual(roll.dexId, 14);
+  }
+  assert.deepEqual([...seen].sort(), [13, 15]);
+});
+
+test('a species without a sprite does not block the rest of its family', () => {
+  const pool = [
+    { id: 13, tier: 'common', family: 5, sprite: false },
+    { id: 14, tier: 'common', family: 5, sprite: true },
+    { id: 15, tier: 'common', family: 5, sprite: true },
+  ];
+  const open = eligible(pool, new Map(), 'common').map((s) => s.id);
+  assert.deepEqual(open, [14]);
 });
 
 // ---------------------------------------------------------------- starter

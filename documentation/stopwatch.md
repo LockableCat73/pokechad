@@ -13,7 +13,9 @@ Code: [`js/stopwatch.js`](../js/stopwatch.js) (logic),
 | Past time | `"method": "manual"` | Enter a date, start time and duration, and rate in the same form. |
 
 Both use the same points formula. A manual entry must be at least 1 minute,
-at most 24 hours, and cannot end in the future.
+at most 23 hours 59 minutes, and cannot end in the future. The form opens with
+a start time three hours before now. Mistakes are reported in the form's own
+red notice, not in the browser's pop-up bubble.
 
 ## States
 
