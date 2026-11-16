@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PokéChad</title>
+  <meta name="description" content="Track your chad and chud time, earn points, collect Pokémon.">
+  <meta name="theme-color" content="#282030">
+  <meta name="color-scheme" content="light">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="preload" href="assets/fonts/PressStart2P-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip" href="#view">Skip to content</a>
+
+  <header class="top">
+    <a class="logo" href="#/" aria-label="PokéChad home">POKé<span>CHAD</span></a>
+    <div class="top-right">
+      <a id="live-chip" class="chip" href="#/" hidden></a>
+      <button id="mute" class="btn btn-small" type="button">SOUND ON</button>
+    </div>
+  </header>
+
+  <main id="view" tabindex="-1">
+    <p class="box pad">LOADING...</p>
+  </main>
+
+  <footer class="foot">
+    <p>UNOFFICIAL FAN PROJECT. NOT AFFILIATED WITH NINTENDO, GAME FREAK OR CREATURES.</p>
+  </footer>
+
+  <div id="modal-root" hidden></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <noscript><p class="box pad">PokéChad needs JavaScript to run.</p></noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

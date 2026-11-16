@@ -1,0 +1,85 @@
+# Refreshes the Pokédex data and sprites from PokeAPI once a month.
+#
+# This workflow NEVER pushes to the default branch. When the updater finds
+# something new it commits to the separate `pokedex-update` branch and opens
+# (or refreshes) a pull request for a human to review and merge.
+#
+# One-time setup: Settings -> Actions -> General -> Workflow permissions ->
+# tick "Allow GitHub Actions to create and approve pull requests". Without it
+# the last step fails and nothing is changed.
+#
+# See documentation/pokedex-updater.md.
+
+name: Update Pokédex
+
+on:
+  schedule:
+    - cron: '17 4 1 * *' # 04:17 UTC on the 1st of every month
+  workflow_dispatch: # also runnable by hand from the Actions tab
+
+permissions:
+  contents: write # push the pokedex-update branch
+  pull-requests: write # open the pull request
+
+concurrency:
+  group: update-pokedex
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      UPDATE_BRANCH: pokedex-update
+      BASE_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run the updater
+        run: python tools/update_pokedex.py | tee "$RUNNER_TEMP/update.log"
+
+      - name: Run the tests against the new data
+        run: node --test
+
+      - name: Open a pull request if anything changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add -A data assets
+          if git diff --cached --quiet; then
+            echo "Nothing new from PokeAPI. No pull request needed."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Work on a branch of its own, rebuilt from the default branch each run.
+          git checkout -B "$UPDATE_BRANCH"
+          git commit -m "Update Pokédex data from PokeAPI"
+          git push --force origin "$UPDATE_BRANCH"
+
+          {
+            echo "Automated monthly refresh from PokeAPI (tools/update_pokedex.py)."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/update.log"
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+
+          open_pr="$(gh pr list --head "$UPDATE_BRANCH" --base "$BASE_BRANCH" --state open --json number --jq '.[0].number')"
+          if [ -n "$open_pr" ]; then
+            gh pr edit "$open_pr" --body-file "$RUNNER_TEMP/body.md"
+            echo "Updated pull request #$open_pr."
+          else
+            gh pr create --base "$BASE_BRANCH" --head "$UPDATE_BRANCH" \
+              --title "Update Pokédex data from PokeAPI" \
+              --body-file "$RUNNER_TEMP/body.md"
+          fi
