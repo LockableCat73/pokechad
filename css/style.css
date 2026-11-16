@@ -217,14 +217,14 @@ button, input, select, textarea { font: inherit; color: inherit; text-transform:
    browsers ignore the ::-webkit-scrollbar rules below and draw their own
    rounded thumb. */
 @supports not selector(::-webkit-scrollbar) {
-  .reveal-grid, .copies, .table-scroll {
+  .reveal-grid, .copies, .table-scroll, .form-rows {
     scrollbar-width: thin;
     scrollbar-color: var(--muted) var(--paper-2);
   }
 }
-.reveal-grid::-webkit-scrollbar, .copies::-webkit-scrollbar, .table-scroll::-webkit-scrollbar { width: 12px; height: 12px; }
-.reveal-grid::-webkit-scrollbar-track, .copies::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track { background: var(--paper-2); }
-.reveal-grid::-webkit-scrollbar-thumb, .copies::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb { background: var(--muted); border: 0; border-radius: 0; }
+.reveal-grid::-webkit-scrollbar, .copies::-webkit-scrollbar, .table-scroll::-webkit-scrollbar, .form-rows::-webkit-scrollbar { width: 12px; height: 12px; }
+.reveal-grid::-webkit-scrollbar-track, .copies::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track, .form-rows::-webkit-scrollbar-track { background: var(--line); }
+.reveal-grid::-webkit-scrollbar-thumb, .copies::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb, .form-rows::-webkit-scrollbar-thumb { background: var(--muted); border: 0; border-radius: 0; }
 .reveal-grid::-webkit-scrollbar-corner, .copies::-webkit-scrollbar-corner, .table-scroll::-webkit-scrollbar-corner { background: var(--paper-2); }
 
 #view { display: flex; flex-direction: column; gap: 16px; padding-bottom: 24px; outline: none; }
@@ -428,11 +428,26 @@ button, input, select, textarea { font: inherit; color: inherit; text-transform:
 .week-day.today { color: var(--text); }
 .week-day.today .week-zero { background: var(--text); }
 
-.nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.nav { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .nav-item {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 12px 4px; text-decoration: none; font-size: 8px; color: var(--text);
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 12px 0; text-decoration: none; font-size: 8px; color: var(--text); min-width: 0;
 }
+/* The coin balance, pinned to the corner of the Shop tile. */
+.nav-badge {
+  position: absolute; top: -4px; right: -4px; min-width: 20px; padding: 0 4px;
+  font-size: 8px; line-height: 16px; text-align: center; color: #282030; background: var(--gold);
+  box-shadow: 0 0 0 4px var(--edge);
+}
+
+/* A coin amount: icon plus number, used for prices and balances. */
+.coins { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.btn .coins { margin-left: 8px; }
+.cannot { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; text-align: right; }
+
+.meter { display: grid; grid-template-columns: repeat(20, 1fr); gap: 4px; padding: 4px; background: #1c1824; }
+.meter i { height: 8px; background: #504860; }
+.meter i.on { background: var(--gold); }
 .nav-item:hover { background: var(--btn-hover); transform: translateY(-4px); }
 .nav-item:active { transform: translateY(4px); }
 
@@ -453,9 +468,9 @@ button, input, select, textarea { font: inherit; color: inherit; text-transform:
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 16px; }
 .tile-value { font-size: 16px; line-height: 24px; }
 
-/* Two-way switch built as one bordered bar. */
+/* A switch between views, built as one bordered bar with equal parts. */
 .segmented {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 4px; background: var(--edge);
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; margin: 4px; background: var(--edge);
   box-shadow: 0 -4px 0 0 var(--edge), 0 4px 0 0 var(--edge), -4px 0 0 0 var(--edge), 4px 0 0 0 var(--edge);
 }
 .segment { min-height: 36px; padding: 8px; border: 0; cursor: pointer; font-size: 8px; background: var(--paper-2); color: var(--muted); }
@@ -488,6 +503,43 @@ button, input, select, textarea { font: inherit; color: inherit; text-transform:
 .badge-new { background: var(--green); color: #fff; }
 
 .detail-art { display: grid; place-items: center; min-height: 192px; background: var(--paper-2); box-shadow: inset 0 0 0 4px var(--line); }
+
+/* The list of a Pokémon's forms: name on the left, state or price on the right. */
+.form-rows { display: flex; flex-direction: column; gap: 4px; max-height: 196px; overflow-y: auto; }
+.form-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px;
+  padding: 4px 8px; background: var(--paper-2);
+}
+.form-row.selected { box-shadow: inset 4px 0 0 0 var(--gold); }
+.form-pick {
+  padding: 4px 0; border: 0; background: transparent; cursor: pointer; text-align: left;
+  font-size: 8px; line-height: 12px; color: var(--text);
+}
+button.form-pick:hover:not(:disabled) { text-decoration: underline; }
+button.form-pick:disabled { cursor: default; color: var(--muted); }
+
+/* Fusions: one card each. */
+.fusion-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
+.fusion { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 8px 12px; text-align: center; background: var(--paper-2); }
+.fusion.owned { background: var(--legend-bg); }
+.fusion-art { width: 96px; height: 96px; }
+.fusion-name { font-size: 8px; line-height: 12px; }
+.fusion-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 4px; }
+.fusion .cannot { justify-content: center; text-align: center; }
+
+/* Shop */
+.section-title { margin-top: 8px; }
+.wallet { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.wallet-amount { font-size: 24px; line-height: 32px; }
+.wallet-amount .coins { gap: 8px; }
+.collector { display: flex; align-items: center; gap: 12px; }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+.shop-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 8px 12px; text-align: center; min-width: 0; }
+.shop-item.dim { background: var(--paper-2); }
+.shop-item .cannot { justify-content: center; text-align: center; }
+.ledger { display: flex; flex-direction: column; gap: 8px; }
+.ledger li { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.ledger li > span:first-child { flex: 1; min-width: 120px; }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 8px; }
 .facts dt { color: var(--muted); }
 .facts dd { text-align: right; }
@@ -719,7 +771,7 @@ details summary { cursor: pointer; font-size: 8px; }
   .top, #view, .foot { padding-left: 12px; padding-right: 12px; }
   .logo { font-size: 16px; }
   .clock { font-size: 24px; line-height: 32px; }
-  .nav { gap: 8px; }
+  .nav { gap: 4px; }
   .modal { padding: 16px; }
   .star-btn { width: 40px; height: 40px; }
   .statbar { grid-template-columns: 1fr 1fr; }

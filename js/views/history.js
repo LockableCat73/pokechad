@@ -6,6 +6,7 @@
 import { h, sprite, fmtDateTime, fmtMinutes, fmtPoints, fmtNumber } from '../dom.js';
 import { starRow } from '../pixelart.js';
 import { collection } from '../rewards.js';
+import { resolveMon } from '../mon.js';
 
 const PAGE = 50;
 
@@ -49,7 +50,8 @@ export function render(ctx, root) {
       earned.length
         ? h('div', { class: 'earned' },
             earned.map((reward) => {
-              const species = dex.byId.get(reward.dexId);
+              // In the form the copy arrived in (Alolan, Heat ...).
+              const species = resolveMon(ctx, reward);
               return h('span', { class: `earned-item${reward.shiny ? ' shiny' : ''}` },
                 sprite(species, { shiny: reward.shiny }),
                 h('span', { class: 'label' }, `${species ? species.name : `#${reward.dexId}`}${reward.shiny ? ' (SHINY)' : ''}${reward.starter ? ' (STARTER)' : ''}`));

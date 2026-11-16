@@ -13,14 +13,19 @@
  *                 name, tier, copy number and a shiny sparkle if it is one
  *
  * Several rewards play one after another; "SKIP ALL" jumps to a summary.
- * The starter was chosen by the player, so it skips straight to step 3.
  * Animations use stepped timing so motion stays pixel-like, and the throw is
  * skipped for people who ask their system for reduced motion.
+ *
+ * Only a reward rolled on the track gets steps 1 and 2. Anything the player
+ * chose or paid for goes straight to step 3: the starter, a copy bought in
+ * the shop, a form that has just been unlocked, and a fusion.
  */
 
 import { h, sprite } from '../dom.js';
 import { icon } from '../pixelart.js';
-import { TIERS, countOwned, collection } from '../rewards.js';
+import { TIERS, collection } from '../rewards.js';
+import { BASE } from '../forms.js';
+import { resolveMon } from '../mon.js';
 
 /** Timeline of the throw, in milliseconds after the button is pressed. */
 const T_HIT = 600;
@@ -29,23 +34,42 @@ const T_CAUGHT = 2400;
 const T_OPEN = 3200;
 
 /**
- * @param {object} ctx     App context.
- * @param {Array}  granted The copies just added to the collection, in order.
- *                         May start with the starter (a record with `starter: true`).
+ * @param {object} ctx   App context.
+ * @param {Array}  items What to show, in order. Each is one of:
+ *   - a reward just added to state.rewards;
+ *   - the starter (`starter: true`);
+ *   - a bought copy (`bought: true`; `copyNumber` may say which copy it was);
+ *   - a form or fusion just unlocked (`unlockedForm: true`, with `dexId` and
+ *     `form`, or with `fusion`). This is not a copy and has no copy number.
  */
-export function showReveal(ctx, granted) {
+export function showReveal(ctx, items) {
   const reduced = globalThis.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const root = h('div', { class: 'reveal' });
   let index = 0;
   let timers = [];
 
-  // Copies owned *as of each reward*, so "COPY 3 OF 7" is right mid-sequence.
-  const before = countOwned(collection(ctx.state));
-  for (const reward of granted) before.set(reward.dexId, before.get(reward.dexId) - 1);
-  const copyNumber = granted.map((reward) => {
-    const n = (before.get(reward.dexId) || 0) + 1;
-    before.set(reward.dexId, n);
-    return n;
+  // For each copy shown: which copy of its species it is, and whether it is
+  // the first to arrive in its form. Worked out as of that copy, so the
+  // numbers are right in the middle of a sequence. Start from everything
+  // held now, take the new copies back out, then add them one at a time.
+  const isCopy = (item) => !item.unlockedForm;
+  const formOf = (item) => item.form || BASE;
+  const held = new Map(); // dexId -> Map(form -> count)
+  const bump = (item, by) => {
+    if (!held.has(item.dexId)) held.set(item.dexId, new Map());
+    const forms = held.get(item.dexId);
+    forms.set(formOf(item), (forms.get(formOf(item)) || 0) + by);
+  };
+  for (const copy of collection(ctx.state)) bump(copy, 1);
+  for (const item of items) if (isCopy(item)) bump(item, -1);
+  const info = items.map((item) => {
+    if (!isCopy(item)) return { copy: 0, newForm: false };
+    const forms = held.get(item.dexId);
+    const total = [...forms.values()].reduce((sum, n) => sum + n, 0);
+    const newForm = formOf(item) !== BASE && !(forms.get(formOf(item)) > 0);
+    bump(item, 1);
+    // A bulk purchase shows only some of its copies and says which each was.
+    return { copy: item.copyNumber || total + 1, newForm };
   });
 
   const later = (ms, fn) => timers.push(setTimeout(() => root.isConnected && fn(), ms));
@@ -53,27 +77,34 @@ export function showReveal(ctx, granted) {
     timers.forEach(clearTimeout);
     timers = [];
   };
-  const heading = (reward) => (reward.starter ? 'YOUR STARTER' : `REWARD AT ${reward.trackPoints} POINTS`);
-  const remaining = () => granted.length - index - 1;
+  const heading = (item) => {
+    if (item.starter) return 'YOUR STARTER';
+    if (item.fusion) return 'FUSION COMPLETE';
+    if (item.unlockedForm) return 'FORM UNLOCKED';
+    if (item.bought) return 'BOUGHT COPY';
+    return `REWARD AT ${item.trackPoints} POINTS`;
+  };
+  const remaining = () => items.length - index - 1;
   const skipButton = (count) =>
     count > 1 ? h('button', { class: 'btn btn-quiet btn-small', type: 'button', onclick: summary }, `SKIP ALL (${count})`) : null;
 
   function begin() {
-    if (granted[index].starter) reveal();
+    const item = items[index];
+    if (item.starter || item.bought || item.unlockedForm) reveal();
     else encounter();
   }
 
   /** Step 1: the silhouette. */
   function encounter() {
     stop();
-    const reward = granted[index];
-    const species = ctx.dex.byId.get(reward.dexId);
+    const item = items[index];
+    const mon = resolveMon(ctx, item);
     const throwButton = h('button', { class: 'btn btn-primary btn-big', type: 'button', onclick: throwBall }, 'THROW POKé BALL');
     root.className = 'reveal';
     root.replaceChildren(
-      h('div', { class: 'label' }, heading(reward)),
+      h('div', { class: 'label' }, heading(item)),
       h('div', { class: 'stage' },
-        h('div', { class: 'stage-mon appear' }, sprite(species, { scale: 2, silhouette: true, eager: true }))),
+        h('div', { class: 'stage-mon appear' }, sprite(mon, { scale: 2, silhouette: true, eager: true }))),
       h('div', { class: 'reveal-name' }, "WHO'S THAT POKéMON?"),
       h('div', { class: 'reveal-footer' }, throwButton, skipButton(remaining() + 1)),
     );
@@ -129,39 +160,52 @@ export function showReveal(ctx, granted) {
   /** Step 3: the Pokémon in colour. */
   function reveal() {
     stop();
-    const reward = granted[index];
-    const species = ctx.dex.byId.get(reward.dexId);
-    const cap = TIERS[reward.tier].cap;
-    const copy = copyNumber[index];
-    ctx.sfx.play(reward.shiny ? 'shiny' : reward.tier === 'common' ? 'reward' : 'legendary');
+    const item = items[index];
+    const mon = resolveMon(ctx, item);
+    const tier = TIERS[item.tier] ? item.tier : 'common';
+    const { copy, newForm } = info[index];
+    ctx.sfx.play(item.shiny ? 'shiny' : tier === 'common' && !item.unlockedForm ? 'reward' : 'legendary');
 
-    const sparkles = reward.shiny
+    const sparkles = item.shiny
       ? [0, 1, 2, 3, 4, 5].map((i) => h('span', { class: `sparkle s${i}` }, icon('sparkle', { scale: 3 })))
       : null;
 
-    root.className = `reveal opened tier-${reward.tier}${reward.shiny ? ' is-shiny' : ''}`;
+    // The small print under the name: which copy this is, or what was unlocked.
+    let detail;
+    if (item.fusion) {
+      const base = ctx.dex.byId.get(mon.fusion.base);
+      const partner = ctx.dex.byId.get(mon.fusion.partner);
+      detail = `${base.name} + ${partner.name}`;
+    } else {
+      const number = `#${String(item.dexId).padStart(4, '0')}`;
+      if (item.unlockedForm) detail = `${number} · ${mon.label}`;
+      else detail = `${number} · COPY ${copy}${copy <= TIERS[tier].cap ? ` OF ${TIERS[tier].cap}` : ''}`;
+    }
+
+    root.className = `reveal opened tier-${tier}${item.shiny ? ' is-shiny' : ''}`;
     root.replaceChildren(
-      h('div', { class: 'label' }, heading(reward)),
+      h('div', { class: 'label' }, heading(item)),
       h('div', { class: 'stage' },
         h('span', { class: 'flash' }),
-        h('div', { class: 'stage-mon pop' }, sprite(species, { shiny: reward.shiny, scale: 2, eager: true })),
+        h('div', { class: 'stage-mon pop' }, sprite(mon, { shiny: item.shiny, scale: 2, eager: true })),
         sparkles),
-      h('div', { class: 'reveal-name' }, species ? species.name.toUpperCase() : `#${reward.dexId}`),
+      h('div', { class: 'reveal-name' }, mon ? mon.name.toUpperCase() : `#${item.dexId}`),
       h('div', { class: 'badges' },
-        reward.starter
-          ? h('span', { class: 'badge badge-new' }, 'STARTER')
-          : h('span', { class: `badge badge-${reward.tier}` }, TIERS[reward.tier].label.toUpperCase()),
-        reward.shiny ? h('span', { class: 'badge badge-shiny' }, 'SHINY') : null,
-        copy === 1 && !reward.starter ? h('span', { class: 'badge badge-new' }, 'NEW') : null,
-        reward.pity ? h('span', { class: 'badge' }, 'PITY') : null),
-      h('div', { class: 'label muted' }, `#${String(reward.dexId).padStart(4, '0')} · COPY ${copy} OF ${cap}`),
+        item.starter ? h('span', { class: 'badge badge-new' }, 'STARTER') : null,
+        item.fusion ? h('span', { class: 'badge badge-legendary' }, 'FUSED') : null,
+        !item.starter && !item.fusion ? h('span', { class: `badge badge-${tier}` }, TIERS[tier].label.toUpperCase()) : null,
+        item.shiny ? h('span', { class: 'badge badge-shiny' }, 'SHINY') : null,
+        copy === 1 && !item.starter ? h('span', { class: 'badge badge-new' }, 'NEW') : null,
+        newForm ? h('span', { class: 'badge badge-new' }, 'NEW FORM') : null,
+        item.pity ? h('span', { class: 'badge' }, 'PITY') : null),
+      h('div', { class: 'label muted' }, detail),
       h('div', { class: 'reveal-footer' },
         h('button', {
           class: 'btn btn-primary btn-big',
           type: 'button',
           onclick: () => {
             index++;
-            if (index < granted.length) begin();
+            if (index < items.length) begin();
             else done();
           },
         }, remaining() > 0 ? 'NEXT' : 'OK'),
@@ -172,16 +216,17 @@ export function showReveal(ctx, granted) {
 
   function summary() {
     stop();
-    index = granted.length;
+    index = items.length;
     root.className = 'reveal opened';
     root.replaceChildren(
-      h('div', { class: 'label' }, `${granted.length} NEW POKéMON`),
+      h('div', { class: 'label' }, `${items.length} NEW POKéMON`),
       h('div', { class: 'reveal-grid' },
-        granted.map((reward) => {
-          const species = ctx.dex.byId.get(reward.dexId);
-          return h('div', { class: `cell owned tier-${reward.tier}${reward.shiny ? ' shiny' : ''}` },
-            sprite(species, { shiny: reward.shiny, eager: true }),
-            h('span', { class: 'cell-name' }, species ? species.name : `#${reward.dexId}`));
+        items.map((item) => {
+          const mon = resolveMon(ctx, item);
+          const tier = TIERS[item.tier] ? item.tier : 'common';
+          return h('div', { class: `cell owned tier-${tier}${item.shiny ? ' shiny' : ''}` },
+            sprite(mon, { shiny: item.shiny, eager: true }),
+            h('span', { class: 'cell-name' }, mon ? mon.name : `#${item.dexId}`));
         })),
       h('div', { class: 'reveal-footer' }, h('button', { class: 'btn btn-primary btn-big', type: 'button', autofocus: true, onclick: done }, 'OK')),
     );
