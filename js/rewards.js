@@ -20,6 +20,33 @@ export const TIERS = {
 export const PITY_LIMIT = 20;
 
 /**
+ * The early game is kept to the older generations. Each entry says: rolled
+ * rewards up to and including number `upTo` may only be species with a
+ * Pokédex number of `maxDex` or lower. After the last entry, any species can
+ * appear. The starter is chosen, not rolled, so it is not counted here.
+ *
+ *   rewards  1-6    Pokédex 1-151  (generation 1)
+ *   rewards  7-12   Pokédex 1-251  (generations 1-2)
+ *   rewards 13-18   Pokédex 1-493  (generations 1-4)
+ *   rewards 19+     everything
+ */
+export const EARLY_RANGES = [
+  { upTo: 6, maxDex: 151 },
+  { upTo: 12, maxDex: 251 },
+  { upTo: 18, maxDex: 493 },
+];
+
+/**
+ * Highest Pokédex number allowed for a given rolled reward.
+ * @param {number} rewardNumber 1 for the first rolled reward, 2 for the second, ...
+ * @returns {number} A Pokédex number, or Infinity when there is no limit.
+ */
+export function dexLimit(rewardNumber) {
+  const range = EARLY_RANGES.find((r) => rewardNumber <= r.upTo);
+  return range ? range.maxDex : Infinity;
+}
+
+/**
  * The starter: a one-off extra reward, chosen by the player rather than
  * rolled, that sits at 1 point on the track (in practice, right after the
  * first session that leaves the score positive). It is in addition to the
@@ -111,23 +138,31 @@ export function owedRewards(highWater, rewards) {
 }
 
 /**
- * Species in a tier that can still be awarded: they have a sprite and are
- * below the tier's cap.
+ * Species in a tier that can still be awarded: they have a sprite, are below
+ * the tier's cap, and are within the Pokédex range currently allowed.
  *
  * @param {Array<{id:number, tier:string, sprite:boolean}>} species
  * @param {Map<number, number>} counts From countOwned().
  * @param {string} tier
+ * @param {number} [maxDex] Highest Pokédex number allowed (see dexLimit).
  */
-export function eligible(species, counts, tier) {
+export function eligible(species, counts, tier, maxDex = Infinity) {
   const cap = TIERS[tier].cap;
   return species.filter(
-    (s) => s.tier === tier && s.sprite !== false && (counts.get(s.id) || 0) < cap,
+    (s) =>
+      s.tier === tier &&
+      s.id <= maxDex &&
+      s.sprite !== false &&
+      (counts.get(s.id) || 0) < cap,
   );
 }
 
 /**
  * Roll one reward.
  *
+ * 0. The Pokédex range for this reward is looked up (dexLimit): the first 18
+ *    rolled rewards are limited to the older generations. This narrows which
+ *    species can appear; it does not change the tier odds.
  * 1. If the pity counter has reached PITY_LIMIT and a legendary is still
  *    available, the tier is forced to legendary. Pity never gives a mythical.
  * 2. Otherwise the tier is rolled by weight (94 / 5 / 1). A tier with nothing
@@ -145,10 +180,11 @@ export function eligible(species, counts, tier) {
  */
 export function rollReward({ species, rewards, starter = null, rng = cryptoRandom }) {
   const counts = countOwned(collection({ starter, rewards }));
+  const maxDex = dexLimit(rewards.length + 1);
   const pools = {
-    common: eligible(species, counts, 'common'),
-    legendary: eligible(species, counts, 'legendary'),
-    mythical: eligible(species, counts, 'mythical'),
+    common: eligible(species, counts, 'common', maxDex),
+    legendary: eligible(species, counts, 'legendary', maxDex),
+    mythical: eligible(species, counts, 'mythical', maxDex),
   };
 
   let tier = null;

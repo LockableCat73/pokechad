@@ -47,17 +47,40 @@ Every species in `data/pokedex.json` has a tier, taken from PokeAPI's
 
 These numbers live in the `TIERS` constant.
 
+## The early game
+
+Your first rolled rewards come from the older generations, so the collection
+starts with familiar faces and opens up as you go.
+
+| Rolled reward | Allowed Pokédex numbers | Generations |
+|---|---|---|
+| 1 to 6 | 1 – 151 | 1 |
+| 7 to 12 | 1 – 251 | 1 – 2 |
+| 13 to 18 | 1 – 493 | 1 – 4 |
+| 19 onwards | all | all |
+
+- The limit only narrows **which species** can appear. The tier is still
+  rolled at 94 / 5 / 1, so an early legendary is one of the legendaries inside
+  the allowed range (Mewtwo and the birds in the first six, for example).
+- The count is of rolled rewards. The starter is chosen, not rolled, and is
+  not one of the six.
+- It is positional: it depends on how many rewards you already hold, nothing
+  else. A hand-edited save with 18 or more rewards is past the early game.
+
+The table lives in `EARLY_RANGES`; `dexLimit(rewardNumber)` reads it.
+
 ## How a roll works
 
 `rollReward({ species, rewards, starter, rng })`:
 
+0. **Range.** Look up the Pokédex limit for this reward (see above).
 1. **Pity check.** If the pity counter has reached `PITY_LIMIT` (20) and at
    least one legendary is still available, the tier is forced to legendary.
 2. **Otherwise roll the tier** by weight, 94 / 5 / 1. A tier in which every
    species is already at its cap is left out, and the remaining tiers share
    the odds in proportion.
 3. **Pick the species** uniformly at random from that tier's eligible pool:
-   species below their cap that have a sprite.
+   species inside the allowed range, below their cap, that have a sprite.
 4. **Shiny?** The copy is shiny if it brings you to the tier's cap. Every
    earlier copy is normal. There is no random shiny chance.
 
@@ -139,8 +162,8 @@ Each reward is stored as:
 
 ## What "every Pokémon is available" means
 
-The pool is every species in `data/pokedex.json` with a sprite: all 1,025 at
-the time of writing (931 common, 71 legendary, 23 mythical). Alternate forms
+Once past the early game, the pool is every species in `data/pokedex.json`
+with a sprite: all 1,025 at the time of writing (931 common, 71 legendary, 23 mythical). Alternate forms
 (regional forms, Mega Evolutions and so on) are not separate entries. When
 PokeAPI adds species, the updater adds them to the pool; see
 [pokedex-updater.md](pokedex-updater.md).

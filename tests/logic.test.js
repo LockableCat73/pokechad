@@ -20,6 +20,7 @@ import {
   collection,
   starterOwed,
   STARTERS,
+  dexLimit,
 } from '../js/rewards.js';
 import * as sw from '../js/stopwatch.js';
 import {
@@ -76,7 +77,10 @@ test('display multiplier is 1.05 * t^0.05 - 0.05 and grows with time', () => {
   assert.ok(Math.abs(displayMultiplier(1) - 1) < 1e-12);
   assert.ok(Math.abs(displayMultiplier(60) - (1.05 * 60 ** 0.05 - 0.05)) < 1e-12);
   assert.ok(displayMultiplier(120) > displayMultiplier(60));
-  assert.equal(displayMultiplier(0), 0);
+  // Display only, so it never shows less than 1: the first minute reads x1.00.
+  assert.equal(displayMultiplier(0), 1);
+  assert.equal(displayMultiplier(0.5), 1);
+  assert.ok(displayMultiplier(1.01) > 1);
 });
 
 test('recalculate tracks net and the high-water mark', () => {
@@ -215,6 +219,61 @@ test('with legendaries exhausted, pity falls back to a normal roll', () => {
   const roll = rollReward({ species: pool, rewards: dry, rng: seeded(5) });
   assert.notEqual(roll, null);
   assert.equal(roll.pity, false);
+});
+
+// ---------------------------------------------------------------- early game
+
+test('early rewards are limited to the older generations', () => {
+  assert.deepEqual([1, 6].map(dexLimit), [151, 151]);
+  assert.deepEqual([7, 12].map(dexLimit), [251, 251]);
+  assert.deepEqual([13, 18].map(dexLimit), [493, 493]);
+  assert.equal(dexLimit(19), Infinity);
+
+  // Many independent runs of 60 rewards each: every reward obeys its range,
+  // and each range really is used (not everything stays in generation 1).
+  const top = { early: 0, mid: 0, late: 0, open: 0 };
+  for (let seed = 1; seed <= 150; seed++) {
+    const rewards = [];
+    grantOwed({ highWater: 6000, rewards, species: dex, rng: seeded(seed) });
+    assert.equal(rewards.length, 60);
+    for (const r of rewards) {
+      assert.ok(r.dexId <= dexLimit(r.n), `reward ${r.n} was #${r.dexId}`);
+      const band = r.n <= 6 ? 'early' : r.n <= 12 ? 'mid' : r.n <= 18 ? 'late' : 'open';
+      top[band] = Math.max(top[band], r.dexId);
+    }
+  }
+  assert.ok(top.early <= 151);
+  assert.ok(top.mid > 151 && top.mid <= 251);
+  assert.ok(top.late > 251 && top.late <= 493);
+  assert.ok(top.open > 493);
+});
+
+test('the early-game limit leaves the tier odds alone', () => {
+  // With no rewards yet, every roll is "reward 1" and so generation 1 only.
+  const rng = seeded(2024);
+  const tally = { common: 0, legendary: 0, mythical: 0 };
+  const rolls = 40_000;
+  for (let i = 0; i < rolls; i++) {
+    const roll = rollReward({ species: dex, rewards: [], rng });
+    assert.ok(roll.dexId <= 151);
+    tally[roll.tier]++;
+  }
+  assert.ok(Math.abs(tally.common / rolls - 0.94) < 0.01);
+  assert.ok(Math.abs(tally.legendary / rolls - 0.05) < 0.01);
+  assert.ok(Math.abs(tally.mythical / rolls - 0.01) < 0.005);
+});
+
+test('pity inside the early game still gives a legendary from the allowed range', () => {
+  // 20 dry commons would not normally fit in the first 6 rewards, but a
+  // hand-edited save can produce it; the forced legendary must obey the range.
+  const dry = Array.from({ length: 5 }, () => ({ dexId: 16, tier: 'common' }));
+  const padded = [...dry];
+  while (pityDry(padded) < PITY_LIMIT) padded.unshift({ dexId: 19, tier: 'common' });
+  const roll = rollReward({ species: dex, rewards: padded.slice(-5), rng: seeded(9) });
+  assert.ok(roll.dexId <= 151);
+  const forced = rollReward({ species: dex, rewards: padded, rng: seeded(9) });
+  assert.equal(forced.tier, 'legendary');
+  assert.ok(forced.dexId <= dexLimit(padded.length + 1));
 });
 
 // ---------------------------------------------------------------- starter

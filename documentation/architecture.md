@@ -146,10 +146,14 @@ Top to bottom: the backup reminder (only when overdue), the two big buttons
 last-7-days tile, and the four navigation tiles.
 
 The progress tile holds the net score, the points left to the next reward,
-the luck gauge, your buddy, and the journey track. The track shows only as
-many stations as fit its width, evenly spaced, with no scrolling: Pokémon at
-stations you have reached, Poké Balls at those you have not. It is drawn by
-`fillTrack()` after the tile is on the page, and redrawn on resize.
+the luck gauge, your buddy, and the journey track: Pokémon at stations you
+have reached, Poké Balls at those you have not. The track holds every station
+from the start to ten beyond the last one earned and scrolls sideways through
+them by swipe, mouse drag, arrow keys or its two arrow buttons. It snaps one
+station at a time, so a whole number of stations is always in view and no
+sprite is cut off. It opens on the window that ends at the next unreached
+station. It is drawn by `fillTrack()` after the tile is on the page, and
+redrawn on resize.
 
 The last-7-days tile (`weekPanel()`) has one column per day, today included
 and on the right: chad time rises above a zero line and chud time hangs below
@@ -181,6 +185,10 @@ in a single dark block beneath it.
   `shape-rendering: crispEdges` at whole-number scales.
 - Layout sits on a 4 px grid. Borders are hard `box-shadow`s; there are no
   rounded corners, gradients or blurs.
+- Text is only ever 8, 16, 24 or 32 px, with whole-pixel line heights and no
+  letter spacing. Press Start 2P is drawn on an 8×8 grid; at any other size
+  (10 px, 12 px ...) each font pixel becomes a fractional number of screen
+  pixels and the letters come out uneven and squashed.
 - Animations move in steps, not smooth tweens. The thrown ball spins in
   quarter turns and shuffles without rotating, so its pixels stay on the
   grid. Everything is disabled under `prefers-reduced-motion`.
