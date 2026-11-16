@@ -18,6 +18,13 @@ Data: [`data/forms.json`](../data/forms.json), written by the updater from
   starts with one coin per reward it already holds.
 - Buying things never earns coins and never moves the track or the luck
   gauge.
+- A ledger entry of type `grant` adds coins. The site never writes one; it is
+  for test saves and hand-edited files.
+
+**Test save.** [`tests/all-pokemon-save.json`](../tests/all-pokemon-save.json)
+holds one copy of every Pokémon except Charmander, a grant that brings the
+balance to exactly 1,000,000, and no history. Load it from Backup → Load JSON
+to try the shop. `node tools/make_test_save.mjs` regenerates it.
 
 ## Prices
 

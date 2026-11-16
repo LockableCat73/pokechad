@@ -8,6 +8,7 @@
  *   { type: 'upgrade', dexId, form, cost, at }                 an upgrade form
  *   { type: 'fuse',    fusion, cost, at }                      a fusion made
  *   { type: 'unfuse',  fusion, cost: 0, at }                   a fusion undone
+ *   { type: 'grant',   coins, cost: 0, at }                    coins handed out (test saves only)
  *
  * Nothing else about the shop is stored. The coin balance, the copies you
  * hold, the forms you have unlocked and the fusions that are active are all
@@ -45,9 +46,16 @@ export const COLLECTOR = {
 
 const ledgerOf = (state) => (state.shop && Array.isArray(state.shop.ledger) ? state.shop.ledger : []);
 
-/** One coin per reward on the track: every 100-point reward, and the starter. */
+/**
+ * One coin per reward on the track: every 100-point reward, and the starter.
+ * Plus any coins handed out by "grant" entries in the ledger. The site never
+ * writes a grant; they exist for test saves and hand-edited files.
+ */
 export function coinsEarned(state) {
-  return state.rewards.length + (state.starter ? 1 : 0);
+  const granted = ledgerOf(state)
+    .filter((entry) => entry.type === 'grant')
+    .reduce((sum, entry) => sum + (Number(entry.coins) || 0), 0);
+  return state.rewards.length + (state.starter ? 1 : 0) + granted;
 }
 
 /** Everything ever spent. Unfusing costs nothing and refunds nothing. */

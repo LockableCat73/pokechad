@@ -194,6 +194,7 @@ function recentSection(ctx) {
   const ledger = (state.shop && state.shop.ledger) || [];
   if (ledger.length === 0) return null;
   const line = (entry) => {
+    if (entry.type === 'grant') return `GRANTED ${fmtNumber(entry.coins)} COINS`;
     if (entry.type === 'fuse' || entry.type === 'unfuse') {
       const fusion = forms.fusionById.get(entry.fusion);
       return `${entry.type === 'fuse' ? 'FUSED' : 'UNFUSED'} ${fusion ? fusion.label : `#${entry.fusion}`}`;

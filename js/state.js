@@ -191,9 +191,9 @@ function normalizeBuddy(raw) {
   return buddy;
 }
 
-const LEDGER_TYPES = ['copy', 'upgrade', 'fuse', 'unfuse'];
+const LEDGER_TYPES = ['copy', 'upgrade', 'fuse', 'unfuse', 'grant'];
 
-/** One purchase in the shop ledger (see js/shop.js for the four types). */
+/** One entry in the shop ledger (see js/shop.js for the five types). */
 function normalizeLedgerEntry(raw, index) {
   const where = `Shop entry ${index + 1}`;
   if (!raw || typeof raw !== 'object') throw new Error(`${where} is not an object.`);
@@ -205,6 +205,13 @@ function normalizeLedgerEntry(raw, index) {
     throw new Error(`${where}: "cost" must be a number, 0 or more.`);
   }
   const at = isoOr(raw.at, new Date().toISOString());
+  if (raw.type === 'grant') {
+    const coins = Number(raw.coins);
+    if (!Number.isInteger(coins) || coins < 0) {
+      throw new Error(`${where}: "coins" must be a whole number, 0 or more.`);
+    }
+    return { type: 'grant', coins, cost: 0, at };
+  }
   if (raw.type === 'fuse' || raw.type === 'unfuse') {
     const fusion = Number(raw.fusion);
     if (!Number.isInteger(fusion) || fusion < 1) {

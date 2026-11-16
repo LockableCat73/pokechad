@@ -221,11 +221,12 @@ the fusion no longer exists.
 | `upgrade` | `dexId`, `form`, `cost`, `at` | An upgrade form (Mega, Gigantamax ...) unlocked for that Pokémon. `form` is its key in `data/forms.json`. |
 | `fuse` | `fusion`, `cost`, `at` | A fusion made. `fusion` is its number in `data/forms.json`. |
 | `unfuse` | `fusion`, `at` | That fusion undone. Its `cost` is always 0. |
+| `grant` | `coins`, `at` | Coins handed out. Never written by the site; for test saves and hand edits. |
 
 Nothing else about the shop is stored. From the ledger the site works out:
 
 - **the coin balance**: one coin per entry in `rewards`, plus one for the
-  starter, minus the sum of every `cost`;
+  starter, plus any `grant`, minus the sum of every `cost`;
 - **your copies**: rewards, the starter, and every `copy` entry;
 - **unlocked forms**: free forms from the `form` of your copies, paid ones
   from `upgrade` entries, Zygarde's from its number of copies;
@@ -326,9 +327,15 @@ whatever it bought (the copy, the upgrade, the fusion) is gone.
 
 ### Give yourself coins
 
-There is no coin field to raise. Coins come from rewards, so either add
-entries to `rewards` (each is one coin, and one Pokémon), or lower the `cost`
-of ledger entries.
+There is no coin field to raise, because the balance is worked out, not
+stored. Append a grant to `shop.ledger`:
+
+```json
+{ "type": "grant", "coins": 500 }
+```
+
+The site never writes a grant itself; it is there for test saves and edits
+like this one.
 
 ### Change the form of a copy
 

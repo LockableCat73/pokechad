@@ -472,6 +472,30 @@ test('the shop survives export and import unchanged', () => {
   assert.deepEqual(normalize({ app: 'pokechad', schema: 1, buddy: { dexId: 6, form: 'base' } }).buddy, { dexId: 6, shiny: false });
 });
 
+test('a grant entry hands out coins; the test save holds one of each and a million coins', () => {
+  const state = normalize({ app: 'pokechad', schema: 1, rewards: [{ dexId: 1 }], shop: { ledger: [{ type: 'grant', coins: 500 }] } });
+  assert.equal(coinsEarned(state), 501);
+  assert.equal(balance(state), 501);
+  assert.deepEqual(state.shop.ledger[0], { type: 'grant', coins: 500, cost: 0, at: state.shop.ledger[0].at });
+  for (const coins of [-1, 2.5, 'lots', undefined]) {
+    assert.throws(
+      () => normalize({ app: 'pokechad', schema: 1, shop: { ledger: [{ type: 'grant', coins }] } }),
+      /Shop entry 1: "coins"/,
+    );
+  }
+
+  const save = importJSON(readFileSync(new URL('./all-pokemon-save.json', import.meta.url), 'utf8'));
+  const counts = countOwned(collection(save));
+  for (const species of dex) {
+    assert.equal(counts.get(species.id) || 0, species.slug === 'charmander' ? 0 : 1, species.name);
+  }
+  assert.equal(save.rewards.length, dex.length - 1);
+  assert.ok(save.rewards.every((r) => !r.shiny && !r.form));
+  assert.equal(save.sessions.length, 0);
+  assert.equal(save.starter, null);
+  assert.equal(balance(save), 1_000_000);
+});
+
 test('an old save with no shop loads with an empty ledger', () => {
   const old = normalize({ app: 'pokechad', schema: 1, rewards: [{ dexId: 1 }, { dexId: 4 }] });
   assert.deepEqual(old.shop, { ledger: [] });
