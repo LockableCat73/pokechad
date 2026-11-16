@@ -116,7 +116,22 @@
 
 * { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Phones flash a translucent blue box over anything tapped. Switch it off
+     everywhere (the property is inherited); pressed buttons already move and
+     keyboard focus still gets its gold outline. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Things you press are not text to select: a long press or a quick double
+   tap must not leave their label highlighted. */
+button, a, summary, label, .sprite, .px {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 
 body {
   margin: 0;
