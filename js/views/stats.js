@@ -4,13 +4,14 @@
  *   2. Net score at the end of each day.
  * Charts are hand-built SVG drawn at the container's real width. Every day
  * has a hover / focus target with a tooltip, and a table view sits below.
+ * Colours come from CSS classes (c-chad, c-chud, ...) so they follow the
+ * light or dark theme.
  */
 
 import { h, dayKey, fmtMinutes, fmtNumber } from '../dom.js';
 import { collection } from '../rewards.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
-const COLOR = { chad: '#2868c0', chud: '#c05828', ink: '#282030', grid: '#d8d0c0', muted: '#786858' };
 const RANGES = [14, 30, 90];
 const DAY = 86_400_000;
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -117,7 +118,7 @@ function minutesChart(series, width) {
   for (let v = -down; v <= up; v += step) {
     const y = Math.round(zero - v * scale);
     plot.append(
-      svg('line', { x1: left, x2: left + innerW, y1: y, y2: y, stroke: v === 0 ? COLOR.ink : COLOR.grid, 'stroke-width': v === 0 ? 2 : 1 }),
+      svg('line', { x1: left, x2: left + innerW, y1: y, y2: y, class: v === 0 ? 'c-zero' : 'c-grid' }),
       svg('text', { x: left - 6, y: y + 3, 'text-anchor': 'end', class: 'axis' }, axisMinutes(Math.abs(v))));
   }
   const labelEvery = Math.ceil(series.length / Math.max(2, Math.floor(innerW / 64)));
@@ -127,11 +128,11 @@ function minutesChart(series, width) {
     const group = svg('g', {});
     if (day.chad > 0) {
       const hgt = Math.max(2, Math.round(day.chad * scale));
-      group.append(svg('rect', { x, y: zero - 1 - hgt, width: barW, height: hgt, fill: COLOR.chad }));
+      group.append(svg('rect', { x, y: zero - 1 - hgt, width: barW, height: hgt, class: 'c-chad' }));
     }
     if (day.chud > 0) {
       const hgt = Math.max(2, Math.round(day.chud * scale));
-      group.append(svg('rect', { x, y: zero + 1, width: barW, height: hgt, fill: COLOR.chud }));
+      group.append(svg('rect', { x, y: zero + 1, width: barW, height: hgt, class: 'c-chud' }));
     }
     bars.push(group);
     plot.append(group);
@@ -165,7 +166,7 @@ function netChart(series, width) {
   const plot = svg('svg', { width, height, viewBox: `0 0 ${width} ${height}`, role: 'group', 'aria-label': 'Net score at the end of each day' });
   for (let v = lo; v <= hi; v += step) {
     plot.append(
-      svg('line', { x1: left, x2: left + innerW, y1: y(v), y2: y(v), stroke: v === 0 ? COLOR.ink : COLOR.grid, 'stroke-width': v === 0 ? 2 : 1 }),
+      svg('line', { x1: left, x2: left + innerW, y1: y(v), y2: y(v), class: v === 0 ? 'c-zero' : 'c-grid' }),
       svg('text', { x: left - 6, y: y(v) + 3, 'text-anchor': 'end', class: 'axis' }, fmtNumber(v)));
   }
   let path = '';
@@ -174,7 +175,7 @@ function netChart(series, width) {
     const x1 = Math.round(left + (i + 1) * band);
     path += `${i === 0 ? 'M' : 'L'}${x0} ${y(day.net)} L${x1} ${y(day.net)} `;
   });
-  plot.append(svg('path', { d: path, fill: 'none', stroke: COLOR.chad, 'stroke-width': 3, 'stroke-linejoin': 'miter' }));
+  plot.append(svg('path', { d: path, class: 'c-line', 'stroke-linejoin': 'miter' }));
 
   const labelEvery = Math.ceil(series.length / Math.max(2, Math.floor(innerW / 64)));
   series.forEach((day, i) => {
@@ -182,8 +183,8 @@ function netChart(series, width) {
       plot.append(svg('text', { x: left + i * band + band / 2, y: height - 8, 'text-anchor': 'middle', class: 'axis' }, dayLabel(day)));
     }
   });
-  const cursor = svg('rect', { x: 0, y: top, width: 2, height: innerH, fill: COLOR.ink, visibility: 'hidden' });
-  const dot = svg('rect', { x: 0, y: 0, width: 10, height: 10, fill: COLOR.chad, stroke: '#fffaf0', 'stroke-width': 2, visibility: 'hidden' });
+  const cursor = svg('rect', { x: 0, y: top, width: 2, height: innerH, class: 'c-cursor', visibility: 'hidden' });
+  const dot = svg('rect', { x: 0, y: 0, width: 10, height: 10, class: 'c-dot', visibility: 'hidden' });
   plot.append(cursor, dot);
 
   const wrap = h('div', { class: 'chart' }, plot);
@@ -245,8 +246,8 @@ export function render(ctx, root) {
       h('section', { class: 'box pad stack' },
         h('h2', {}, 'MINUTES PER DAY'),
         h('div', { class: 'legend' },
-          h('span', {}, h('i', { style: { background: COLOR.chad } }), 'CHAD'),
-          h('span', {}, h('i', { style: { background: COLOR.chud } }), 'CHUD')),
+          h('span', {}, h('i', { class: 'l-chad' }), 'CHAD'),
+          h('span', {}, h('i', { class: 'l-chud' }), 'CHUD')),
         minutesChart(series, width)),
       h('section', { class: 'box pad stack' },
         h('h2', {}, 'NET SCORE BY DAY'),

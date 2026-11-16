@@ -1,8 +1,12 @@
 /**
- * Pokédex: totals at the top, then two tabs.
- *   POKéDEX  every species by number; unowned ones are silhouettes, owned
- *            ones show the sprite and copies held out of the cap.
- *   SHINIES  only the shiny Pokémon you hold.
+ * Pokédex.
+ *
+ *   - A compact bar of totals: species found, copies collected, shinies,
+ *     and time spent (plain clock time, no multiplier or rating applied).
+ *   - A two-way switch: ALL POKéMON or SHINIES.
+ *   - ALL POKéMON: search, tier filters, and a grid of every species by
+ *     number. Unfound species are silhouettes with only their number.
+ *   - SHINIES: just the shiny Pokémon you hold.
  */
 
 import { h, sprite, fmtDateTime, fmtDate, fmtNumber } from '../dom.js';
@@ -13,8 +17,8 @@ const FILTERS = [
   ['all', 'ALL'],
   ['owned', 'FOUND'],
   ['missing', 'MISSING'],
-  ['legendary', 'LEGENDARY'],
-  ['mythical', 'MYTHICAL'],
+  ['legendary', 'LEGEND'],
+  ['mythical', 'MYTHIC'],
 ];
 
 /** Remembered while the page is open so going back and forth keeps your place. */
@@ -24,7 +28,7 @@ let query = '';
 
 const dexNo = (id) => `#${String(id).padStart(4, '0')}`;
 
-/** Total recorded time as hours and minutes; this is clock time, with no multiplier or rating applied. */
+/** Total recorded time as hours and minutes. */
 function fmtTotal(minutes) {
   const whole = Math.round(minutes);
   return `${fmtNumber(Math.floor(whole / 60))}h ${String(whole % 60).padStart(2, '0')}m`;
@@ -36,11 +40,9 @@ export function render(ctx, root) {
   const counts = countOwned(copies);
   const shinyCopies = copies.filter((r) => r.shiny);
   const shinyAt = new Map(shinyCopies.map((r) => [r.dexId, r.at]));
+  const minutes = state.sessions.reduce((sum, s) => sum + s.activeMinutes, 0);
 
-  const chadMinutes = state.sessions.filter((s) => s.kind === 'chad').reduce((sum, s) => sum + s.activeMinutes, 0);
-  const chudMinutes = state.sessions.filter((s) => s.kind === 'chud').reduce((sum, s) => sum + s.activeMinutes, 0);
-
-  // ---- tab: full Pokédex
+  // ---- all Pokémon
   const cells = dex.species.map((species) => {
     const count = counts.get(species.id) || 0;
     const owned = count > 0;
@@ -52,15 +54,14 @@ export function render(ctx, root) {
       onclick: () => openDetail(ctx, species),
     },
       sprite(species, { shiny, silhouette: !owned }),
+      owned ? h('span', { class: 'cell-count' }, `${count}/${TIERS[species.tier].cap}`) : null,
       shiny ? h('span', { class: 'cell-shiny' }, icon('sparkle', { scale: 2 })) : null,
       h('span', { class: 'cell-no' }, dexNo(species.id)),
-      h('span', { class: 'cell-name' }, owned ? species.name : '?????'),
-      owned ? h('span', { class: 'cell-count' }, `${count}/${TIERS[species.tier].cap}`) : null);
+      owned ? h('span', { class: 'cell-name' }, species.name) : null);
     return { el, species, owned };
   });
 
   const empty = h('p', { class: 'box pad muted', hidden: true }, 'NOTHING MATCHES.');
-  const shown = h('span', { class: 'label muted' }, '');
 
   function apply() {
     const q = query.trim().toLowerCase().replace(/^#/, '');
@@ -80,7 +81,6 @@ export function render(ctx, root) {
       if (ok) visible++;
     }
     empty.hidden = visible > 0;
-    shown.textContent = `SHOWING ${visible}`;
   }
 
   const filterButtons = FILTERS.map(([key, label]) =>
@@ -102,7 +102,7 @@ export function render(ctx, root) {
   const search = h('input', {
     class: 'input',
     type: 'search',
-    placeholder: 'NAME OR NUMBER',
+    placeholder: 'SEARCH NAME OR NUMBER',
     'aria-label': 'Search by name or number',
     value: query,
     oninput: () => {
@@ -111,12 +111,12 @@ export function render(ctx, root) {
     },
   });
 
-  const dexPanel = h('div', { class: 'stack', role: 'tabpanel', 'aria-label': 'Pokédex' },
-    h('div', { class: 'filters' }, h('div', { class: 'row wrap' }, filterButtons), search, shown),
+  const dexPanel = h('div', { class: 'stack', role: 'tabpanel', 'aria-label': 'All Pokémon' },
+    h('div', { class: 'filters' }, search, h('div', { class: 'chips' }, filterButtons)),
     empty,
     h('div', { class: 'dex-grid' }, cells.map((c) => c.el)));
 
-  // ---- tab: shinies
+  // ---- shinies
   const shinyPanel = h('div', { class: 'stack', role: 'tabpanel', 'aria-label': 'Shinies' },
     shinyCopies.length === 0
       ? h('p', { class: 'box pad muted' },
@@ -132,17 +132,16 @@ export function render(ctx, root) {
               sprite(species, { shiny: true }),
               h('span', { class: 'cell-shiny' }, icon('sparkle', { scale: 2 })),
               h('span', { class: 'cell-no' }, dexNo(species.id)),
-              h('span', { class: 'cell-name' }, species.name),
-              h('span', { class: 'cell-count' }, fmtDate(shinyAt.get(species.id)))))));
+              h('span', { class: 'cell-name' }, species.name)))));
 
-  // ---- tabs
+  // ---- switch
   const tabs = [
-    ['dex', `POKéDEX ${counts.size}/${dex.species.length}`, dexPanel],
+    ['dex', 'ALL POKéMON', dexPanel],
     ['shiny', `SHINIES ${shinyCopies.length}`, shinyPanel],
   ];
   const tabButtons = tabs.map(([key, label]) =>
     h('button', {
-      class: 'tab',
+      class: 'segment',
       type: 'button',
       role: 'tab',
       onclick: () => {
@@ -161,29 +160,24 @@ export function render(ctx, root) {
     });
   }
 
+  const stat = (label, value) =>
+    h('div', { class: 'stat' }, h('span', { class: 'label muted' }, label), h('span', { class: 'stat-value' }, value));
+
   root.append(
     h('div', { class: 'page-head' },
       h('a', { class: 'btn btn-small', href: '#/' }, '◀ BACK'),
       h('h1', {}, 'POKéDEX')),
-    h('section', { class: 'box pad tiles', 'aria-label': 'Totals' },
-      tile('POKéMON FOUND', `${counts.size}/${dex.species.length}`, 'UNIQUE SPECIES'),
-      tile('POKéMON COLLECTED', fmtNumber(copies.length), 'INCLUDING DUPLICATES'),
-      tile('SHINIES', fmtNumber(shinyCopies.length), null),
-      tile('TIME SPENT', fmtTotal(chadMinutes + chudMinutes),
-        `CHAD ${fmtTotal(chadMinutes)} · CHUD ${fmtTotal(chudMinutes)}`)),
-    h('div', { class: 'tabs', role: 'tablist' }, tabButtons),
+    h('section', { class: 'box statbar', 'aria-label': 'Totals' },
+      stat('FOUND', `${counts.size}/${dex.species.length}`),
+      stat('COLLECTED', fmtNumber(copies.length)),
+      stat('SHINIES', fmtNumber(shinyCopies.length)),
+      stat('TIME', fmtTotal(minutes))),
+    h('div', { class: 'segmented', role: 'tablist' }, tabButtons),
     dexPanel,
     shinyPanel,
   );
   paintTabs();
   apply();
-}
-
-function tile(label, value, sub) {
-  return h('div', { class: 'tile' },
-    h('div', { class: 'label muted' }, label),
-    h('div', { class: 'tile-value' }, value),
-    sub ? h('div', { class: 'label muted' }, sub) : null);
 }
 
 function openDetail(ctx, species) {

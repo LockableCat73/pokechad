@@ -79,8 +79,43 @@ newest, that were **not legendary** (`pityDry(rewards)`).
 Pity only ever produces a legendary. Mythicals come solely from the normal 1%
 roll. A reward forced by pity is marked `pity: true`.
 
-The dashboard shows the worst case: "Legendary guaranteed in N rewards or
-fewer", where `N = 21 − counter`.
+The dashboard shows the worst case as a small gauge; see
+[The luck gauge](#the-luck-gauge).
+
+## When the roll happens
+
+Nothing on the track is decided in advance. A station you have not reached
+is a closed Poké Ball with nothing behind it; the dashboard could not show
+its contents even if it wanted to, because they do not exist yet.
+
+The roll happens at the moment a session is saved and the high-water mark
+passes a new 100-point mark. The result is written to the save immediately,
+before any animation plays. That ordering is deliberate: if the roll waited
+for the animation, closing the tab mid-reveal and reopening it would re-roll,
+and you could keep doing that until a legendary appeared.
+
+A station **ahead** of the red marker that already shows a Pokémon is one you
+reached earlier and have since fallen behind after chud time. It is a past
+reward, not a preview.
+
+## The encounter
+
+`js/views/reveal.js` plays once per new reward:
+
+1. **Who's that Pokémon?** A black silhouette of the rolled Pokémon slides
+   in. Its name and tier are not shown.
+2. **Throw Poké Ball.** Pressing the button throws the ball in an arc. It
+   hits, the silhouette vanishes in a flash, and the ball drops, shuffles
+   three times and clicks shut ("Gotcha!"). About three seconds; "Skip" jumps
+   ahead.
+3. **Reveal.** The Pokémon is shown in colour with its name, tier, copy
+   number, and sparkles on a night-sky stage if it is shiny.
+
+The catch always succeeds, because the reward is already yours.
+
+With several rewards waiting, "Skip all" jumps to a summary grid. The starter
+was your own choice, so it goes straight to step 3. With the system's
+reduced-motion setting on, step 2 is skipped.
 
 ## Handing out rewards
 
@@ -92,8 +127,7 @@ owed = floor(highWater / 100) − rewards.length      (never below 0)
 ```
 
 A long session can cross several marks at once; each gets its own roll and
-its own reveal. With more than one waiting, the reveal dialog offers "Skip
-all", which jumps to a summary grid.
+its own encounter.
 
 Each reward is stored as:
 
@@ -113,8 +147,15 @@ PokeAPI adds species, the updater adds them to the pool; see
 
 Filling the whole collection takes 931×7 + 71×5 + 23×2 = 6,918 copies.
 
+## The luck gauge
+
+The small circle in the dashboard's progress tile is the pity counter. The
+number inside is how many rewards remain, at most, before a legendary is
+guaranteed (`21 − counter`), and the circle fills with gold from the bottom as
+that gets closer. Tapping it spells the meaning out.
+
 ## Buddy
 
 Any Pokémon you hold can be set as your buddy from its Pokédex entry. It is
-shown on the dashboard. If you hold the shiny copy you can choose the shiny
+shown on the dashboard, at the left of the journey track. If you hold the shiny copy you can choose the shiny
 look. It is cosmetic.

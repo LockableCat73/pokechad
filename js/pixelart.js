@@ -6,9 +6,13 @@
 
 const SVG = 'http://www.w3.org/2000/svg';
 
-/** Character -> colour. "." is transparent. */
+/**
+ * Character -> colour. "." is transparent. Values may be CSS custom
+ * properties, so outlines follow the light or dark theme.
+ */
 export const PALETTE = {
-  k: '#282030', // ink
+  k: 'var(--art-ink)', // outline
+  a: 'var(--text)', // thin lines that must stay readable on any panel
   w: '#ffffff',
   r: '#d83030', // red
   y: '#f8c820', // star yellow
@@ -88,21 +92,37 @@ export const BITMAPS = {
   ],
   stats: [
     '................',
-    'k...............',
-    'k..........kkk..',
-    'k..........kbk..',
-    'k..........kbk..',
-    'k......kkk.kbk..',
-    'k......krk.kbk..',
-    'k......krk.kbk..',
-    'k..kkk.krk.kbk..',
-    'k..kyk.krk.kbk..',
-    'k..kyk.krk.kbk..',
-    'k..kyk.krk.kbk..',
-    'k..kyk.krk.kbk..',
-    'kkkkkkkkkkkkkkkk',
+    'a...............',
+    'a..........kkk..',
+    'a..........kbk..',
+    'a..........kbk..',
+    'a......kkk.kbk..',
+    'a......krk.kbk..',
+    'a......krk.kbk..',
+    'a..kkk.krk.kbk..',
+    'a..kyk.krk.kbk..',
+    'a..kyk.krk.kbk..',
+    'a..kyk.krk.kbk..',
+    'a..kyk.krk.kbk..',
+    'aaaaaaaaaaaaaaaa',
     '................',
     '................',
+  ],
+  // The luck gauge. "f" cells are the inside of the circle; luckGauge()
+  // turns them gold from the bottom up.
+  gauge: [
+    '....kkkk....',
+    '..kkffffkk..',
+    '.kffffffffk.',
+    '.kffffffffk.',
+    'kffffffffffk',
+    'kffffffffffk',
+    'kffffffffffk',
+    'kffffffffffk',
+    '.kffffffffk.',
+    '.kffffffffk.',
+    '..kkffffkk..',
+    '....kkkk....',
   ],
   backup: [
     'kkkkkkkkkkkkkk..',
@@ -143,8 +163,30 @@ export const BITMAPS = {
  * @param {string} [options.label] Accessible name; omitted icons are decorative.
  * @returns {SVGSVGElement}
  */
-export function icon(name, { scale = 2, swap = {}, label = '' } = {}) {
-  const rows = BITMAPS[name];
+export function icon(name, options = {}) {
+  return draw(BITMAPS[name], name, options);
+}
+
+/**
+ * The luck gauge: a small circle that fills with gold from the bottom as the
+ * pity counter climbs towards the guaranteed legendary. It keeps one fixed
+ * palette in both themes, like a sprite.
+ *
+ * @param {number} fraction 0 (empty) to 1 (full).
+ * @param {number} [scale]
+ */
+export function luckGauge(fraction, scale = 3) {
+  const rows = BITMAPS.gauge;
+  const inside = rows.length - 2;
+  const filled = Math.round(Math.min(1, Math.max(0, fraction)) * inside);
+  const painted = rows.map((row, y) => {
+    const fromBottom = rows.length - 1 - y; // 1..inside for interior rows
+    return row.replace(/f/g, fromBottom <= filled ? 'y' : 'e');
+  });
+  return draw(painted, 'gauge', { scale, swap: { k: '#282030', e: '#f0e8d8' } });
+}
+
+function draw(rows, name, { scale = 2, swap = {}, label = '' } = {}) {
   const width = rows[0].length;
   const height = rows.length;
   const svg = document.createElementNS(SVG, 'svg');
@@ -173,7 +215,7 @@ export function icon(name, { scale = 2, swap = {}, label = '' } = {}) {
         rect.setAttribute('y', y);
         rect.setAttribute('width', end - x);
         rect.setAttribute('height', 1);
-        rect.setAttribute('fill', colours[ch]);
+        rect.style.fill = colours[ch];
         svg.append(rect);
       }
       x = end;
@@ -185,7 +227,7 @@ export function icon(name, { scale = 2, swap = {}, label = '' } = {}) {
 /** Fill colours for the rating stars, following the classic IV-judge look. */
 const STAR_YELLOW = { y: '#f8c820' };
 const STAR_RED = { y: '#e02828' };
-const STAR_EMPTY = { y: '#e8e0d0', k: '#a8a098' };
+const STAR_EMPTY = { y: 'var(--star-empty)', k: 'var(--star-empty-edge)' };
 
 /**
  * A row of four rating stars. 0–3 stars are drawn in yellow; a full 4 turns

@@ -20,13 +20,15 @@ Everything is saved in your browser. There is no account and no server.
 | **Multiplier** | The stopwatch shows `1.05 × t^0.05 − 0.05`. It is a visual nudge to stay in the session and is not used in the maths. |
 | **Breaks** | Pause whenever you like; paused time does not count. A break longer than 35 minutes ends the session, with a red countdown over the last 5. |
 | **Starter** | Your first point lets you choose Bulbasaur, Charmander, Squirtle or Pikachu. |
-| **Rewards** | A random Pokémon every 100 points: 94% common, 5% legendary, 1% mythical. 20 rewards without a legendary guarantees one. |
+| **Rewards** | A random Pokémon every 100 points: 94% common, 5% legendary, 1% mythical. 20 rewards without a legendary guarantees one. Nothing is decided until you reach the mark; then a silhouette appears and you throw the ball to find out. |
 | **Copies** | Up to 7 of a common, 5 of a legendary, 2 of a mythical. The last copy is shiny. |
 | **Chud** | Chud time lowers your score but never takes a Pokémon away. The next reward comes when you pass your previous best. |
 
 The dashboard also has a **Pokédex** (everything you have found, plus a
 Shinies tab and your totals), a **History** of every session, **Stats** with
 charts, and **Backup**.
+
+Light or dark follows your system setting automatically.
 
 ## Back up your data
 

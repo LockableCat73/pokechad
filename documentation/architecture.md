@@ -19,11 +19,11 @@ js/
   pixelart.js            hand-drawn icons as text bitmaps, rating stars
   sfx.js                 square-wave sound effects (Web Audio)
   views/
-    dashboard.js         score, journey track, big buttons or stopwatch, nav
+    dashboard.js         big buttons or stopwatch, compact progress tile, nav
     rate.js              rating dialog and "add past time" dialog
     starter.js           the one-off starter choice
-    reveal.js            Poké Ball reveal animation
-    pokedex.js           totals, Pokédex tab, Shinies tab, detail dialog
+    reveal.js            the encounter: silhouette, throw, reveal
+    pokedex.js           totals bar, all / shinies switch, grid, detail dialog
     history.js           list of every session
     stats.js             all-time tiles and two charts
     settings.js          export, import, sound, reset, about
@@ -139,6 +139,34 @@ browser reports data-saver mode), so any Pokémon can be revealed offline.
 When you add or rename a JavaScript or CSS file, add it to `SHELL_FILES` in
 `sw.js`.
 
+## The dashboard
+
+Top to bottom: the backup reminder (only when overdue), the two big buttons
+(or the stopwatch while a session runs), one compact progress tile, and the
+four navigation tiles.
+
+The progress tile holds the net score, the points left to the next reward,
+the luck gauge, your buddy, and the journey track. The track shows only as
+many stations as fit its width, evenly spaced, with no scrolling: Pokémon at
+stations you have reached, Poké Balls at those you have not. It is drawn by
+`fillTrack()` after the tile is on the page, and redrawn on resize.
+
+## Light and dark
+
+The theme follows the system setting through `prefers-color-scheme`. There is
+no switch in the app and nothing is stored. Every colour is a CSS custom
+property declared once for light at the top of `css/style.css` and overridden
+in a single dark block beneath it.
+
+- Icons in `pixelart.js` use `var(--art-ink)` for outlines, and charts take
+  their colours from classes (`c-chad`, `c-chud`, ...), so both follow the
+  theme.
+- A few things keep one fixed palette in both themes on purpose, because they
+  are artwork rather than interface: the logo, the encounter stage (so the
+  black silhouette always reads), the luck gauge and the toast.
+- The chad and chud chart colours were checked for colour-blind separation
+  against both the light and the dark panel colour.
+
 ## Pixel-art rules
 
 - Sprites are 96×96. They are shown only at 1× or 2× with
@@ -147,8 +175,9 @@ When you add or rename a JavaScript or CSS file, add it to `SHELL_FILES` in
   `shape-rendering: crispEdges` at whole-number scales.
 - Layout sits on a 4 px grid. Borders are hard `box-shadow`s; there are no
   rounded corners, gradients or blurs.
-- Animations use `steps()` timing, and are disabled under
-  `prefers-reduced-motion`.
+- Animations move in steps, not smooth tweens. The thrown ball spins in
+  quarter turns and shuffles without rotating, so its pixels stay on the
+  grid. Everything is disabled under `prefers-reduced-motion`.
 
 ## Tests
 
