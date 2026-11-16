@@ -494,6 +494,20 @@ test('a grant entry hands out coins; the test save holds one of each and a milli
   assert.equal(save.sessions.length, 0);
   assert.equal(save.starter, null);
   assert.equal(balance(save), 1_000_000);
+
+  // The second test save: ten copies of each, following the game's rules.
+  const ten = importJSON(readFileSync(new URL('./all-pokemon-x10-save.json', import.meta.url), 'utf8'));
+  const tenCounts = countOwned(collection(ten));
+  for (const species of dex) {
+    assert.equal(tenCounts.get(species.id) || 0, species.slug === 'charmander' ? 0 : 10, species.name);
+    if (species.slug === 'charmander') continue;
+    assert.equal(ten.rewards.filter((r) => r.dexId === species.id && r.shiny).length, 1, `one shiny ${species.name}`);
+    const wanted = variantsOf(forms, species.id).map((v) => v.key);
+    assert.deepEqual([...unlockedForms(ten, forms, species.id)].filter((k) => k !== BASE && wanted.includes(k)).sort(), wanted.slice().sort());
+  }
+  assert.deepEqual(copiesOf(ten, mon('rotom').id).map((c) => c.form || BASE).slice(0, 7), ['base', 'heat', 'wash', 'frost', 'fan', 'mow', 'base']);
+  assert.ok(unlockedForms(ten, forms, mon('zygarde').id).has('10'));
+  assert.equal(balance(ten), 1_000_000);
 });
 
 test('an old save with no shop loads with an empty ledger', () => {

@@ -21,10 +21,16 @@ Data: [`data/forms.json`](../data/forms.json), written by the updater from
 - A ledger entry of type `grant` adds coins. The site never writes one; it is
   for test saves and hand-edited files.
 
-**Test save.** [`tests/all-pokemon-save.json`](../tests/all-pokemon-save.json)
-holds one copy of every Pokémon except Charmander, a grant that brings the
-balance to exactly 1,000,000, and no history. Load it from Backup → Load JSON
-to try the shop. `node tools/make_test_save.mjs` regenerates it.
+**Test saves.** Two files for trying the shop, loaded from Backup → Load
+JSON. Both leave Charmander out, carry a grant that brings the balance to
+exactly 1,000,000, and have no history.
+
+| File | Holds |
+|---|---|
+| [`tests/all-pokemon-save.json`](../tests/all-pokemon-save.json) | 1 copy of every Pokémon: all Base, no shinies |
+| [`tests/all-pokemon-x10-save.json`](../tests/all-pokemon-x10-save.json) | 10 copies of every Pokémon: every shiny and every free alternate form, Zygarde's 10% form, and spare copies for all six fusions |
+
+`node tools/make_test_save.mjs` regenerates both.
 
 ## Prices
 
