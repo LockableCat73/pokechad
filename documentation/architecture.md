@@ -189,6 +189,11 @@ in a single dark block beneath it.
   letter spacing. Press Start 2P is drawn on an 8×8 grid; at any other size
   (10 px, 12 px ...) each font pixel becomes a fractional number of screen
   pixels and the letters come out uneven and squashed.
+- All text is displayed in capitals (`text-transform: uppercase` on the body,
+  inherited by buttons and inputs). The font's lowercase letters are as wide
+  as its capitals but only about 5 pixels tall, so mixed-case text looks
+  squat. This is display only: descriptions are saved as typed. The logo
+  opts out to keep its small "é".
 - Animations move in steps, not smooth tweens. The thrown ball spins in
   quarter turns and shuffles without rotating, so its pixels stay on the
   grid. Everything is disabled under `prefers-reduced-motion`.

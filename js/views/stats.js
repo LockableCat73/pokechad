@@ -66,7 +66,9 @@ function niceStep(max, count, steps) {
   return [1, 2, 5, 10].map((m) => m * power).find((s) => s >= raw);
 }
 
-const axisMinutes = (m) => (m === 0 ? '0' : m % 60 === 0 ? `${m / 60}h` : `${m}m`);
+// Axis labels live inside SVG, so they are written in capitals here rather
+// than relying on the page's text-transform.
+const axisMinutes = (m) => (m === 0 ? '0' : m % 60 === 0 ? `${m / 60}H` : `${m}M`);
 const dayLabel = (d) => `${d.date.getDate()} ${MONTHS[d.date.getMonth()]}`;
 
 /** Shared hover/focus layer: one invisible column per day plus a tooltip. */

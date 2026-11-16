@@ -12,6 +12,10 @@
  *     set at 8, 16, 24 or 32px, with whole-pixel line heights and no letter
  *     spacing. Any other size (10px, 12px ...) makes the browser stretch the
  *     glyphs unevenly and the text looks squashed.
+ *   - Case: everything is displayed in capitals (text-transform on the body).
+ *     The font's lowercase letters are as wide as its capitals but only about
+ *     5 pixels tall, so mixed-case text looks squat. Only the logo opts out,
+ *     to keep its small "é".
  *
  * Light and dark: every colour is a custom property. The dark values are
  * applied automatically from the system setting (prefers-color-scheme);
@@ -120,6 +124,7 @@ body {
   font-family: var(--font);
   font-size: 8px;
   line-height: 16px;
+  text-transform: uppercase;
   color: var(--text);
   background-color: var(--bg);
   /* A barely-there pixel weave so large empty areas are not flat. */
@@ -150,7 +155,8 @@ h1 { font-size: 24px; line-height: 32px; font-weight: normal; }
 h2 { font-size: 16px; line-height: 24px; font-weight: normal; }
 ol, ul { list-style: none; }
 a { color: inherit; }
-button, input { font: inherit; color: inherit; }
+/* Browsers reset form controls to their own font and to text-transform: none. */
+button, input, select, textarea { font: inherit; color: inherit; text-transform: inherit; }
 [hidden] { display: none !important; }
 
 .visually-hidden {
@@ -175,7 +181,7 @@ button, input { font: inherit; color: inherit; }
 /* The logo keeps its own fixed outline colour so it reads the same in both themes. */
 .logo {
   --o: #282030;
-  font-size: 24px; line-height: 24px; text-decoration: none; color: #fff;
+  font-size: 24px; line-height: 24px; text-decoration: none; text-transform: none; color: #fff;
   text-shadow:
     4px 0 0 var(--o), -4px 0 0 var(--o), 0 4px 0 var(--o), 0 -4px 0 var(--o),
     4px 4px 0 var(--o), -4px 4px 0 var(--o), 4px -4px 0 var(--o), -4px -4px 0 var(--o),
