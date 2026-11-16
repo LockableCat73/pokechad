@@ -24,9 +24,10 @@ Everything is saved in your browser. There is no account and no server.
 | **Copies** | Up to 7 of a common, 5 of a legendary, 2 of a mythical. The last copy is shiny. |
 | **Chud** | Chud time lowers your score but never takes a Pokémon away. The next reward comes when you pass your previous best. |
 
-The dashboard also has a **Pokédex** (everything you have found, plus a
-Shinies tab and your totals), a **History** of every session, **Stats** with
-charts, and **Backup**.
+The dashboard shows your chad and chud time for the last 7 days, and links
+to a **Pokédex** (everything you have found, plus a Shinies tab and your
+totals), a **History** of every session, **Stats** with charts, and
+**Backup**.
 
 Light or dark follows your system setting automatically.
 

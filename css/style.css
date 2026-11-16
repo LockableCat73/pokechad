@@ -340,6 +340,29 @@ button, input { font: inherit; color: inherit; }
   background: var(--red); box-shadow: 0 0 0 4px var(--edge); transform: rotate(45deg);
 }
 
+/* Last 7 days: chad bars rise from the zero line, chud bars hang below it. */
+.week { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.week-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.week-head .label { margin-right: auto; }
+.week-total { display: inline-flex; align-items: center; gap: 8px; font-size: 8px; line-height: 1.6; white-space: nowrap; }
+.week-total i { width: 8px; height: 8px; }
+.week-chad { background: var(--chad); }
+.week-chud { background: var(--chud); }
+.week-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.week-day {
+  display: flex; flex-direction: column; align-items: stretch; padding: 0; border: 0; cursor: pointer;
+  background: transparent; color: var(--muted);
+}
+.week-day:hover { background: var(--paper-2); }
+.week-up, .week-down { display: flex; justify-content: center; height: 28px; }
+.week-up { align-items: flex-end; }
+.week-down { align-items: flex-start; }
+.week-up i, .week-down i { display: block; width: 60%; max-width: 32px; }
+.week-zero { height: 2px; margin: 2px 0; background: var(--line); }
+.week-label { font-size: 8px; line-height: 1; padding: 6px 0 2px; text-align: center; }
+.week-day.today { color: var(--text); }
+.week-day.today .week-zero { background: var(--text); }
+
 .nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 8px;

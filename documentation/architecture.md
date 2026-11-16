@@ -142,14 +142,20 @@ When you add or rename a JavaScript or CSS file, add it to `SHELL_FILES` in
 ## The dashboard
 
 Top to bottom: the backup reminder (only when overdue), the two big buttons
-(or the stopwatch while a session runs), one compact progress tile, and the
-four navigation tiles.
+(or the stopwatch while a session runs), one compact progress tile, the
+last-7-days tile, and the four navigation tiles.
 
 The progress tile holds the net score, the points left to the next reward,
 the luck gauge, your buddy, and the journey track. The track shows only as
 many stations as fit its width, evenly spaced, with no scrolling: Pokémon at
 stations you have reached, Poké Balls at those you have not. It is drawn by
 `fillTrack()` after the tile is on the page, and redrawn on resize.
+
+The last-7-days tile (`weekPanel()`) has one column per day, today included
+and on the right: chad time rises above a zero line and chud time hangs below
+it, on one shared scale, with the week's totals above. It counts plain active
+minutes, with no multiplier or rating, and files each session under the day
+it started. Tapping a day shows its numbers.
 
 ## Light and dark
 

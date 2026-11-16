@@ -3,10 +3,11 @@
  *   1. backup reminder (only when a backup is overdue)
  *   2. the two big buttons, or the running stopwatch
  *   3. one compact progress tile: score, next reward, luck gauge, buddy, journey track
- *   4. navigation
+ *   4. the last 7 days of chad and chud time
+ *   5. navigation
  */
 
-import { h, sprite, fmtClock, fmtNumber } from '../dom.js';
+import { h, sprite, fmtClock, fmtNumber, fmtMinutes, dayKey } from '../dom.js';
 import { icon, luckGauge } from '../pixelart.js';
 import { displayMultiplier, sessionPoints, STAR_MAX, POINTS_PER_REWARD } from '../scoring.js';
 import { PITY_LIMIT, STARTER_POINTS } from '../rewards.js';
@@ -28,6 +29,7 @@ export function render(ctx, root) {
     backupReminder(ctx),
     ctx.state.active ? sessionPanel(ctx) : actionButtons(ctx),
     progressPanel(ctx),
+    weekPanel(ctx),
     navButtons(ctx),
   ];
   root.append(...parts.filter(Boolean));
@@ -286,6 +288,65 @@ function fillTrack(ctx, strip) {
       h('div', { class: 'track-fill', style: { left: `${fillFrom}px`, width: `${Math.max(0, Math.round(markerX) - fillFrom)}px` } }),
       stations,
       h('div', { class: 'track-marker', style: { left: `${Math.round(markerX)}px` } })));
+}
+
+const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+/** Tallest a bar in the week tile can be, in pixels (each direction). */
+const WEEK_BAR = 28;
+
+/**
+ * Time spent over the last 7 days, today included.
+ *
+ * One column per day: chad time rises above the zero line, chud time hangs
+ * below it, both on the same scale. The totals at the top double as the
+ * legend. This is plain recorded time (active minutes), with no multiplier
+ * or rating applied. A session counts towards the day it started on.
+ * Tapping a day spells its numbers out.
+ */
+function weekPanel(ctx) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(today.getTime());
+    date.setDate(today.getDate() - i);
+    days.push({ key: dayKey(date), date, chad: 0, chud: 0, today: i === 0 });
+  }
+  const byKey = new Map(days.map((d) => [d.key, d]));
+  for (const session of ctx.state.sessions) {
+    const day = byKey.get(dayKey(session.startedAt));
+    if (day) day[session.kind] += session.activeMinutes;
+  }
+
+  const span = (minutes) => (minutes > 0 ? fmtMinutes(minutes) : '0m');
+  const total = (kind) => days.reduce((sum, d) => sum + d[kind], 0);
+  const peak = Math.max(1, ...days.map((d) => Math.max(d.chad, d.chud)));
+  // Bar heights snap to the 4px grid; any time at all shows at least one step.
+  const height = (minutes) => (minutes > 0 ? Math.max(4, Math.round(((minutes / peak) * WEEK_BAR) / 4) * 4) : 0);
+
+  const columns = days.map((day) => {
+    const name = day.today ? 'TODAY' : WEEKDAYS[day.date.getDay()];
+    const summary = `${name}: CHAD ${span(day.chad)} · CHUD ${span(day.chud)}`;
+    return h('button', {
+      class: `week-day${day.today ? ' today' : ''}`,
+      type: 'button',
+      title: summary,
+      'aria-label': summary,
+      onclick: () => ctx.toast(summary),
+    },
+      h('span', { class: 'week-up' }, h('i', { class: 'week-chad', style: { height: `${height(day.chad)}px` } })),
+      h('span', { class: 'week-zero' }),
+      h('span', { class: 'week-down' }, h('i', { class: 'week-chud', style: { height: `${height(day.chud)}px` } })),
+      h('span', { class: 'week-label' }, WEEKDAYS[day.date.getDay()][0]));
+  });
+
+  return h('section', { class: 'box week', 'aria-label': 'Time spent in the last 7 days' },
+    h('div', { class: 'week-head' },
+      h('span', { class: 'label muted' }, 'LAST 7 DAYS'),
+      h('span', { class: 'week-total' }, h('i', { class: 'week-chad' }), `CHAD ${span(total('chad'))}`),
+      h('span', { class: 'week-total' }, h('i', { class: 'week-chud' }), `CHUD ${span(total('chud'))}`)),
+    h('div', { class: 'week-days' }, columns));
 }
 
 function navButtons(ctx) {
