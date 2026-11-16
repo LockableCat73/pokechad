@@ -4,6 +4,7 @@
  */
 
 import { POINTS_PER_REWARD } from './scoring.js';
+import { BASE, nextForm } from './forms.js';
 
 /**
  * The three tiers. `weight` is the chance out of 100 that a roll lands in the
@@ -111,30 +112,57 @@ export function starterOwed(highWater, starter) {
 }
 
 /**
- * Every Pokémon copy the player holds, oldest first: the starter (if chosen)
- * followed by the rolled rewards. The starter is presented in the same shape
- * as a reward, with `n: 0` and `starter: true`, so views can treat all copies
- * alike. It counts as one copy of its species towards that species' cap.
+ * Every Pokémon copy the player holds: the starter (if chosen), then the
+ * rolled rewards, then the copies bought in the shop. All are presented in
+ * the shape of a reward, so views can treat every copy alike:
+ *   - the starter has `n: 0` and `starter: true`;
+ *   - a bought copy has `bought: true` and no place on the track.
+ * Every copy counts towards its species' copy total.
  *
- * @param {{starter: object|null, rewards: Array}} state
+ * @param {{starter: object|null, rewards: Array, shop?: {ledger: Array}}} state
  * @returns {Array}
  */
-export function collection({ starter, rewards }) {
-  if (!starter) return rewards;
-  return [
-    {
-      n: 0,
-      trackPoints: STARTER_POINTS,
-      dexId: starter.dexId,
-      tier: 'common',
-      shiny: false,
+export function collection({ starter, rewards, shop }) {
+  const bought = boughtCopies(shop);
+  if (!starter && bought.length === 0) return rewards;
+  const first = starter
+    ? [
+        {
+          n: 0,
+          trackPoints: STARTER_POINTS,
+          dexId: starter.dexId,
+          tier: 'common',
+          shiny: false,
+          pity: false,
+          at: starter.at,
+          sessionId: starter.sessionId,
+          starter: true,
+        },
+      ]
+    : [];
+  return [...first, ...rewards, ...bought];
+}
+
+/**
+ * The copies bought in the shop, as copy records. They live in the shop
+ * ledger as entries of type "copy" (see js/shop.js).
+ *
+ * @param {{ledger?: Array}|null|undefined} shop `state.shop`.
+ */
+export function boughtCopies(shop) {
+  if (!shop || !Array.isArray(shop.ledger)) return [];
+  return shop.ledger
+    .filter((entry) => entry.type === 'copy')
+    .map((entry) => ({
+      dexId: entry.dexId,
+      tier: entry.tier,
+      shiny: Boolean(entry.shiny),
+      form: entry.form || BASE,
       pity: false,
-      at: starter.at,
-      sessionId: starter.sessionId,
-      starter: true,
-    },
-    ...rewards,
-  ];
+      at: entry.at,
+      sessionId: null,
+      bought: true,
+    }));
 }
 
 /**
@@ -219,17 +247,26 @@ export function eligible(species, counts, tier, maxDex = Infinity) {
  *    left to give is skipped and its weight is shared among the others.
  * 3. A species is picked uniformly from that tier's eligible pool.
  * 4. The reward is shiny when this copy reaches the tier's cap.
+ * 5. Its form is chosen (see nextForm in forms.js): Base for a first copy,
+ *    otherwise the next alternate form not yet held, or a random form once
+ *    all are held.
+ *
+ * Rolls never pass the 7 / 5 / 2 copy limit, counting bought copies too.
+ * Only the shop can take a species beyond it.
  *
  * @param {object} args
  * @param {Array} args.species           The Pokédex (data/pokedex.json `species`).
  * @param {Array} args.rewards           Rewards already awarded.
  * @param {object|null} [args.starter]   The chosen starter; counts as a copy of its species.
+ * @param {object|null} [args.shop]      `state.shop`; bought copies count as copies.
+ * @param {object|null} [args.forms]     Index from indexForms(); omit for "no alternate forms".
  * @param {() => number} [args.rng]      Returns a float in [0, 1). Defaults to crypto.
- * @returns {{dexId:number, tier:string, shiny:boolean, pity:boolean}|null}
+ * @returns {{dexId:number, tier:string, shiny:boolean, pity:boolean, form:string}|null}
  *          null when every species is at its cap.
  */
-export function rollReward({ species, rewards, starter = null, rng = cryptoRandom }) {
-  const counts = countOwned(collection({ starter, rewards }));
+export function rollReward({ species, rewards, starter = null, shop = null, forms = null, rng = cryptoRandom }) {
+  const copies = collection({ starter, rewards, shop });
+  const counts = countOwned(copies);
   const maxDex = dexLimit(rewards.length + 1);
   const pools = {
     common: eligible(species, counts, 'common', maxDex),
@@ -259,8 +296,10 @@ export function rollReward({ species, rewards, starter = null, rng = cryptoRando
 
   const pool = pools[tier];
   const chosen = pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
-  const copies = (counts.get(chosen.id) || 0) + 1;
-  return { dexId: chosen.id, tier, shiny: copies >= TIERS[tier].cap, pity };
+  const total = (counts.get(chosen.id) || 0) + 1;
+  const heldForms = copies.filter((c) => c.dexId === chosen.id).map((c) => c.form || BASE);
+  const form = forms ? nextForm(forms, chosen.id, heldForms, rng) : BASE;
+  return { dexId: chosen.id, tier, shiny: total >= TIERS[tier].cap, pity, form };
 }
 
 /**
@@ -271,16 +310,18 @@ export function rollReward({ species, rewards, starter = null, rng = cryptoRando
  * @param {Array}  args.rewards    Mutated: new rewards are pushed onto it.
  * @param {Array}  args.species
  * @param {object|null} [args.starter]   The chosen starter, if any.
+ * @param {object|null} [args.shop]      `state.shop`, so bought copies are counted.
+ * @param {object|null} [args.forms]     Index from indexForms().
  * @param {string|null} [args.sessionId] The session that triggered the rewards.
  * @param {string} [args.at]       ISO timestamp to stamp on the rewards.
  * @param {() => number} [args.rng]
  * @returns {Array} The newly created reward records (may be empty).
  */
-export function grantOwed({ highWater, rewards, species, starter = null, sessionId = null, at, rng }) {
+export function grantOwed({ highWater, rewards, species, starter = null, shop = null, forms = null, sessionId = null, at, rng }) {
   const granted = [];
   let owed = owedRewards(highWater, rewards);
   while (owed-- > 0) {
-    const roll = rollReward({ species, rewards, starter, rng });
+    const roll = rollReward({ species, rewards, starter, shop, forms, rng });
     if (!roll) break;
     const n = rewards.length + 1;
     const reward = {
@@ -293,6 +334,8 @@ export function grantOwed({ highWater, rewards, species, starter = null, session
       at: at || new Date().toISOString(),
       sessionId,
     };
+    // Only alternate forms are written down; no `form` means Base.
+    if (roll.form && roll.form !== BASE) reward.form = roll.form;
     rewards.push(reward);
     granted.push(reward);
   }
