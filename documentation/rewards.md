@@ -166,9 +166,9 @@ reward, not a preview.
 1. **Who's that Pokémon?** A black silhouette of the rolled Pokémon slides
    in. Its name and tier are not shown.
 2. **Throw Poké Ball.** Pressing the button throws the ball in an arc. It
-   hits, the silhouette vanishes in a flash, and the ball drops, shuffles
-   three times and clicks shut: three stars pop out of it and "Gotcha!"
-   appears. About three seconds; "Skip" jumps ahead.
+   hits, the silhouette vanishes in a flash, and the ball drops and shuffles
+   three times, its centre button blinking red each time it hops to a side.
+   Then it clicks shut: three stars pop out of it and "Gotcha!" appears. About three seconds; "Skip" jumps ahead.
 3. **Reveal.** The Pokémon is shown in colour with its name, tier, copy
    number, and sparkles on a night-sky stage if it is shiny.
 

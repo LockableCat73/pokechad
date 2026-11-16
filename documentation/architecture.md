@@ -198,6 +198,9 @@ in a single dark block beneath it.
   capital É is a squat glyph that looks wrong there. `h()` in `js/dom.js`
   wraps every é in a `<span class="lc">`; use `setText()` instead of
   `textContent` for text that might contain one.
+- Dialogs stack as sibling `.modal-layer` elements, and each layer has
+  `isolation: isolate`. A `z-index` used inside one dialog therefore stays
+  inside it and cannot show through a dialog opened on top.
 - Scrolling areas inside dialogs use a square, themed scrollbar, and forms
   use `novalidate` with their own messages, so no unstyled browser widget
   (rounded scrollbar, validation bubble) appears on top of the pixel look.
