@@ -9,6 +9,7 @@
  *     startedAt: ISO string,
  *     pauses:    [{ from: ISO, to: ISO }],   finished breaks
  *     pausedAt:  ISO string | null           start of the break in progress
+ *     remindersSent: number                  45-minute reminders already shown
  *   }
  */
 
@@ -20,6 +21,9 @@ export const BREAK_LIMIT_MS = 35 * MINUTE;
 /** The red "continue or lose multiplier" countdown covers this final stretch. */
 export const BREAK_WARNING_MS = 5 * MINUTE;
 
+/** A reminder is shown each time this much active time has built up. */
+export const REMINDER_EVERY_MS = 45 * MINUTE;
+
 const ms = (iso) => Date.parse(iso);
 const iso = (time) => new Date(time).toISOString();
 
@@ -29,7 +33,7 @@ const iso = (time) => new Date(time).toISOString();
  * @param {number} now Epoch milliseconds.
  */
 export function start(kind, now) {
-  return { kind, startedAt: iso(now), pauses: [], pausedAt: null };
+  return { kind, startedAt: iso(now), pauses: [], pausedAt: null, remindersSent: 0 };
 }
 
 /** Start a break. No effect if already paused. */
@@ -79,6 +83,26 @@ export function breakStatus(active, now) {
   if (remainingMs <= 0) return { phase: 'expired', remainingMs: 0 };
   if (remainingMs <= BREAK_WARNING_MS) return { phase: 'warning', remainingMs };
   return { phase: 'break', remainingMs };
+}
+
+/**
+ * Is a 45-minute reminder due?
+ *
+ * Reminders follow active time, so breaks do not count towards them and none
+ * arrives during a break. `remindersSent` on the session says how many 45-minute
+ * marks have been dealt with. If several marks went by unseen (the computer
+ * slept, the tab was frozen), only one reminder is due, and `count` jumps
+ * to the current mark so the missed ones are not replayed.
+ *
+ * @returns {{due:boolean, count:number, minutes:number}} `count` is what
+ *   `remindersSent` should become once the reminder has been shown;
+ *   `minutes` is the active time that mark stands for (45, 90, ...).
+ */
+export function reminderStatus(active, now) {
+  const sent = active.remindersSent || 0;
+  const count = Math.floor(elapsedMs(active, now) / REMINDER_EVERY_MS);
+  const due = !active.pausedAt && count > sent;
+  return { due, count: Math.max(count, sent), minutes: (count * REMINDER_EVERY_MS) / MINUTE };
 }
 
 /**

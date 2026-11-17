@@ -16,12 +16,18 @@ import {
   newId,
 } from './state.js';
 import { recalculate, clampStars } from './scoring.js';
-import { grantOwed, pityDry, starterOwed, collection, boughtCopies, STARTER_POINTS } from './rewards.js';
+import { grantOwed, starterOwed, STARTER_POINTS } from './rewards.js';
+import { starterCopy } from './holdings.js';
 import { indexForms, NO_FORMS, formsOf, displayName } from './forms.js';
 import * as shopRules from './shop.js';
 import * as stopwatch from './stopwatch.js';
 import { createSfx } from './sfx.js';
-import { h, clear, setText, fmtClock, fmtPoints } from './dom.js';
+import { h, clear, sprite, setText, fmtClock, fmtPoints } from './dom.js';
+import { resolveMon } from './mon.js';
+import { reminderText, pickReminderCopy } from './encourage.js';
+import { askPermission, notify, permission } from './notify.js';
+import { syncWakeLock } from './wakelock.js';
+import { setFavicon } from './favicon.js';
 import * as dashboard from './views/dashboard.js';
 import * as pokedex from './views/pokedex.js';
 import * as history from './views/history.js';
@@ -121,6 +127,7 @@ async function boot() {
   ctx.state = loaded.state;
 
   window.addEventListener('hashchange', render);
+  window.addEventListener('popstate', onPopState);
   window.addEventListener('storage', onStorage);
   document.addEventListener('keydown', onKeydown);
   document.addEventListener('visibilitychange', () => !document.hidden && tick());
@@ -140,6 +147,9 @@ async function boot() {
   setInterval(tick, 500);
 
   registerServiceWorker();
+
+  // For trying things from the browser's console. See documentation/stopwatch.md.
+  window.pokechad = { testReminder };
 }
 
 /**
@@ -193,6 +203,8 @@ function render() {
   document.body.dataset.view = name || 'dashboard';
   clear(viewRoot);
   currentView.render(ctx, viewRoot);
+  // A full-page dialog (a Pokédex entry) redraws itself from the state too.
+  for (const open of modalStack) if (open.refresh) open.refresh();
   updateChrome(Date.now());
 }
 
@@ -217,14 +229,22 @@ function tick() {
     } else {
       lastWarnMinute = null;
     }
+    const reminder = stopwatch.reminderStatus(active, now);
+    if (reminder.due) {
+      active.remindersSent = reminder.count;
+      save();
+      remind(active.kind, reminder.minutes);
+    }
   }
+  syncWakeLock(Boolean(active));
   updateChrome(now);
   if (currentView.tick) currentView.tick(ctx, now);
 }
 
-/** Header chip, mute button and tab title. */
+/** Header chip, mute button, tab title and tab icon. */
 function updateChrome(now) {
   const active = ctx.state.active;
+  setFavicon(active ? active.kind : null);
   muteButton.textContent = ctx.state.settings.muted ? 'SOUND OFF' : 'SOUND ON';
   muteButton.setAttribute('aria-pressed', String(!ctx.state.settings.muted));
   if (!active) {
@@ -240,12 +260,57 @@ function updateChrome(now) {
   document.title = `${clock} ${label} · PokéChad`;
 }
 
+// ------------------------------------------------------------------ reminders
+
+/**
+ * Show a 45-minute reminder: an encouraging line with a random Pokémon the
+ * player holds. On screen it is a message with a chime. If the tab is in the
+ * background it is also sent as a system notification, when those are allowed.
+ *
+ * @param {'chad'|'chud'} kind
+ * @param {number} minutes Active time on the stopwatch.
+ * @param {{always?: boolean}} [options] `always` sends the system
+ *   notification even with the tab in front (used by testReminder).
+ * @returns {Promise<boolean>} Whether a system notification was sent.
+ */
+function remind(kind, minutes, { always = false } = {}) {
+  const copy = pickReminderCopy(ctx.state.pokemon, randomFloat);
+  const mon = copy ? resolveMon(ctx, copy) : null;
+  const shiny = Boolean(copy && copy.shiny && mon && mon.shiny);
+  const { title, body } = reminderText(kind, minutes, mon ? mon.name : null, randomFloat);
+  toast(`${title}. ${body}`, 12000, mon ? { mon, shiny } : null);
+  ctx.sfx.play('reminder');
+  if (!document.hidden && !always) return Promise.resolve(false);
+  const icon = mon ? `assets/sprites/${shiny ? 'shiny' : 'normal'}/${mon.id}.png` : 'assets/icons/icon-192.png';
+  return notify({ title, body, icon, tag: 'pokechad-reminder' });
+}
+
+/**
+ * Console helper: `pokechad.testReminder()` or `pokechad.testReminder('chud')`.
+ * Asks for permission if it has not been asked, then sends a reminder now,
+ * as a system notification as well as on screen.
+ *
+ * @returns {Promise<string>} What happened, in words.
+ */
+async function testReminder(kind = 'chad') {
+  const allowed = await askPermission();
+  const sent = await remind(kind === 'chud' ? 'chud' : 'chad', 45, { always: true });
+  if (sent) return 'Sent. Look for the system notification.';
+  if (allowed === 'unsupported') return 'This browser has no notifications. The on-screen message was shown.';
+  if (allowed === 'denied') return 'Notifications are blocked for this site. Allow them in the site settings (the icon left of the address). The on-screen message was shown.';
+  if (allowed === 'default') return 'The permission question was dismissed. Run this again and choose Allow. The on-screen message was shown.';
+  return `Could not send (permission is "${permission()}"). The on-screen message was shown.`;
+}
+
 // ------------------------------------------------------------------ sessions
 
 function startSession(kind) {
   if (ctx.state.active || ctx.state.pendingRating) return;
   ctx.state.active = stopwatch.start(kind, Date.now());
   save();
+  // The first stopwatch asks once whether reminders may be shown as system
+  // notifications. Whatever the answer, it is never asked again.
+  askPermission();
   ctx.sfx.play('start');
   closeModal(true);
   go('');
@@ -345,37 +410,44 @@ function discardPending() {
  */
 function settle(sessionId) {
   const { state } = ctx;
-  if (starterOwed(state.score.highWater, state.starter)) {
+  if (starterOwed(state.score.highWater, starterCopy(state))) {
     save();
     render();
     openStarter(ctx, (dexId) => {
       const first = state.sessions.find((s) => s.netAfter >= STARTER_POINTS);
-      state.starter = {
+      const starter = {
+        source: 'starter',
         dexId,
+        tier: 'common',
+        shiny: false,
         at: new Date().toISOString(),
         sessionId: first ? first.id : sessionId,
       };
+      state.pokemon.push(starter);
       closeModal(true);
-      grantAndReveal(sessionId, true);
+      grantAndReveal(sessionId, starter);
     });
     return true;
   }
-  return grantAndReveal(sessionId, false);
+  return grantAndReveal(sessionId, null);
 }
 
-function grantAndReveal(sessionId, withStarter) {
+/**
+ * Roll every reward the track owes, save, and play the reveals.
+ * @param {string|null} sessionId
+ * @param {object|null} starter The starter copy, when it was chosen just now.
+ */
+function grantAndReveal(sessionId, starter) {
   const { state } = ctx;
-  const granted = grantOwed({
-    highWater: state.score.highWater,
-    rewards: state.rewards,
-    species: ctx.dex.species,
-    starter: state.starter,
-    shop: state.shop,
-    forms: ctx.forms,
-    sessionId,
-  });
-  state.pity = { dry: pityDry(state.rewards) };
-  const reveals = withStarter ? [collection(state)[0], ...granted] : granted;
+  const granted = grantOwed({ state, species: ctx.dex.species, forms: ctx.forms, sessionId });
+  // A reward that came with a bonus form shows the Pokémon, then the form.
+  const reveals = starter ? [starter] : [];
+  for (const copy of granted) {
+    reveals.push(copy);
+    if (copy.bonusForm) {
+      reveals.push({ dexId: copy.dexId, tier: copy.tier, form: copy.bonusForm, shiny: false, unlockedForm: true, bonus: true });
+    }
+  }
   if (reveals.length === 0) return false;
   if (!state.buddy) {
     state.buddy = { dexId: reveals[0].dexId, shiny: reveals[0].shiny };
@@ -390,7 +462,8 @@ function grantAndReveal(sessionId, withStarter) {
 //
 // Each action asks for confirmation, applies the purchase through the pure
 // rules in shop.js, saves, redraws, and shows what was obtained. They resolve
-// to true when the purchase went through.
+// to true when the purchase went through. A Pokédex entry that is open stays
+// open underneath and is redrawn with the new totals (see render).
 
 /** Form keys unlocked by reaching a copy count (Zygarde), before and after a change. */
 function milestonesUnlocked(species) {
@@ -425,30 +498,27 @@ async function buyCopies(species, count) {
 function applyCopies(species, count) {
   const before = new Set(milestonesUnlocked(species).map((f) => f.key));
   const heldBefore = shopRules.copiesOf(ctx.state, species.id).length;
-  let bought = 0;
+  const added = [];
   try {
     for (let i = 0; i < count; i++) {
-      shopRules.buyCopy(ctx.state, ctx.forms, species, { rng: randomFloat });
-      bought++;
+      added.push(shopRules.buyCopy(ctx.state, ctx.forms, species, { rng: randomFloat }));
     }
   } catch (error) {
-    if (bought === 0) {
+    if (added.length === 0) {
       toast(error.message);
       return false;
     }
   }
+  const bought = added.length;
   save();
-  closeModal(true);
   render();
   ctx.sfx.play('save');
 
   // Show the copies worth showing: a single purchase always, and from a bulk
   // purchase the shiny one. Then any form the new total has unlocked.
   // Each is told which copy it was, since only some of a bulk purchase are shown.
-  const copies = boughtCopies(ctx.state.shop).slice(-bought);
-  copies.forEach((copy, i) => {
-    copy.copyNumber = heldBefore + i + 1;
-  });
+  // (Shown from a duplicate, so the note does not end up in the save.)
+  const copies = added.map((copy, i) => ({ ...copy, copyNumber: heldBefore + i + 1 }));
   const reveals = bought === 1 ? copies : copies.filter((copy) => copy.shiny);
   for (const form of milestonesUnlocked(species)) {
     if (!before.has(form.key)) reveals.push({ dexId: species.id, tier: species.tier, form: form.key, shiny: false, unlockedForm: true });
@@ -470,7 +540,6 @@ async function buyUpgrade(species, form) {
   if (!ok) return false;
   shopRules.buyUpgrade(ctx.state, ctx.forms, species, form);
   save();
-  closeModal(true);
   render();
   ctx.sfx.play('save');
   showReveal(ctx, [{ dexId: species.id, tier: species.tier, form: form.key, shiny: false, unlockedForm: true }]);
@@ -493,7 +562,6 @@ async function fuseFusion(fusion) {
   if (!ok) return false;
   shopRules.fuse(ctx.state, ctx.forms, fusion);
   save();
-  closeModal(true);
   render();
   ctx.sfx.play('save');
   showReveal(ctx, [{ fusion: fusion.id, shiny: false, tier: 'legendary', unlockedForm: true }]);
@@ -516,7 +584,6 @@ async function unfuseFusion(fusion) {
   if (!ok) return false;
   shopRules.unfuse(ctx.state, fusion);
   save();
-  closeModal(true);
   render();
   toast('UNFUSED. BOTH COPIES RETURNED.');
   return true;
@@ -580,7 +647,7 @@ async function importBackup(file) {
     return;
   }
   const ok = await confirm(
-    `Replace everything saved in this browser with "${file.name}"? The file has ${imported.sessions.length} sessions and ${collection(imported).length} Pokémon. What is here now will be lost unless you exported it.`,
+    `Replace everything saved in this browser with "${file.name}"? The file has ${imported.sessions.length} sessions and ${imported.pokemon.length} Pokémon. What is here now will be lost unless you exported it.`,
     { yes: 'REPLACE', danger: true },
   );
   if (!ok) return;
@@ -624,43 +691,84 @@ function onStorage(event) {
 /**
  * Show a dialog on top of the page. Dialogs stack.
  *
+ * With `page: true` the dialog is a whole page instead of a box: it covers
+ * the window, uses the page background, and has no dimmed backdrop. It is
+ * still a dialog (no address of its own), but it takes one step in the
+ * browser's history, so the browser's Back button and a phone's back gesture
+ * close it like any page. Its content should include its own BACK button
+ * that calls closeModal().
+ *
  * @param {Node} content
  * @param {object} [options]
  * @param {boolean} [options.locked] No Escape / backdrop dismissal.
  * @param {string}  [options.label]  Accessible name.
  * @param {string}  [options.kind]   Extra class on the dialog box.
+ * @param {boolean} [options.page]   Show as a full page (see above).
+ * @param {() => void} [options.refresh] Called whenever the view is redrawn,
+ *   so a dialog that stays open can redraw itself from the state.
  * @param {() => void} [options.onClose]
  */
-function openModal(content, { locked = false, label = 'Dialog', kind = '', onClose } = {}) {
-  const dialog = h('div', { class: `modal box ${kind}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': label }, content);
+function openModal(content, { locked = false, label = 'Dialog', kind = '', page = false, refresh, onClose } = {}) {
+  const dialog = h('div', {
+    class: page ? `page ${kind}` : `modal box ${kind}`,
+    role: 'dialog',
+    'aria-modal': 'true',
+    'aria-label': label,
+  }, content);
   const layer = h('div', {
-    class: 'modal-layer',
+    class: `modal-layer${page ? ' is-page' : ''}`,
     onclick: (event) => {
-      if (event.target === layer && !locked) closeModal();
+      if (event.target === layer && !locked && !page) closeModal();
     },
   }, dialog);
-  modalStack.push({ layer, locked, onClose, returnFocus: document.activeElement });
+  modalStack.push({ layer, locked, page, refresh, onClose, returnFocus: document.activeElement });
   modalRoot.append(layer);
   modalRoot.hidden = false;
   document.body.classList.add('has-modal');
+  if (page) window.history.pushState({ pokechadPage: true }, '');
   const first = dialog.querySelector('[autofocus]') || dialog.querySelector('button, input, select, textarea');
   if (first) first.focus();
   return dialog;
 }
 
-/** Close the top dialog, or every dialog when `all` is true. */
-function closeModal(all = false) {
+/**
+ * Close the top dialog, or every dialog when `all` is true.
+ * @param {boolean} [all]
+ * @param {boolean} [fromHistory] The browser already stepped back (internal).
+ */
+function closeModal(all = false, fromHistory = false) {
   do {
     const top = modalStack.pop();
     if (!top) break;
     top.layer.remove();
     if (top.onClose) top.onClose();
+    if (top.page && !fromHistory) {
+      // Give back the history step the page took when it opened.
+      ignorePops++;
+      window.history.back();
+    }
     if (!all && top.returnFocus && top.returnFocus.isConnected) top.returnFocus.focus();
   } while (all);
   if (modalStack.length === 0) {
     modalRoot.hidden = true;
     document.body.classList.remove('has-modal');
   }
+}
+
+/** History steps taken back by closeModal itself, which onPopState must not act on. */
+let ignorePops = 0;
+
+/** The browser went back: if a full-page dialog is on top, that closes it. */
+function onPopState() {
+  if (ignorePops > 0) {
+    ignorePops--;
+    return;
+  }
+  const top = modalStack[modalStack.length - 1];
+  if (top && top.page) closeModal(false, true);
+  // Something else is open above a page (a confirmation, a reveal): the page
+  // stays, so take its history step again.
+  else if (modalStack.some((m) => m.page)) window.history.pushState({ pokechadPage: true }, '');
 }
 
 function onKeydown(event) {
@@ -694,10 +802,17 @@ function confirm(message, { yes = 'YES', no = 'CANCEL', danger = false } = {}) {
   });
 }
 
-/** Show a short message at the bottom of the screen. */
-function toast(message, duration = 3500) {
+/**
+ * Show a short message at the bottom of the screen.
+ * @param {string} message
+ * @param {number} [duration] Milliseconds.
+ * @param {{mon: object, shiny?: boolean}|null} [picture] A Pokémon to show beside it.
+ */
+function toast(message, duration = 3500, picture = null) {
   clearTimeout(toastTimer);
   setText(toastRoot, message);
+  if (picture) toastRoot.prepend(sprite(picture.mon, { shiny: picture.shiny, eager: true }));
+  toastRoot.classList.toggle('with-picture', Boolean(picture));
   toastRoot.classList.add('show');
   toastTimer = setTimeout(() => toastRoot.classList.remove('show'), duration);
 }

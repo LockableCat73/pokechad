@@ -50,10 +50,12 @@ ICON_DIR = ROOT / "assets" / "icons"
 API = "https://pokeapi.co/api/v2"
 SPRITE_HOST = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon"
 
-# Dashboard button art. Zacian's Crowned Sword form is a separate "pokemon"
-# entry in PokeAPI (id 10188), not a species, so it is fetched by hand here.
+# Dashboard button art, also used for the browser tab icon while a stopwatch
+# runs. Gigantamax Snorlax (10206) and Zacian's Crowned Sword form (10188)
+# are separate "pokemon" entries in PokeAPI, not species, so they are
+# fetched by hand here.
 ICONS = {
-    "snorlax.png": f"{SPRITE_HOST}/143.png",
+    "snorlax-gmax.png": f"{SPRITE_HOST}/10206.png",
     "zacian-crowned.png": f"{SPRITE_HOST}/10188.png",
 }
 

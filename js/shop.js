@@ -1,22 +1,50 @@
 /**
- * Pokécoins and the shop. Pure functions over the save, no DOM and no
- * storage. Documented in documentation/shop.md.
+ * The shop: what Pokécoins can buy, and the rules for buying it. Pure
+ * functions over the save, no DOM and no storage. Documented in
+ * documentation/shop.md.
  *
- * Everything bought is one entry in `state.shop.ledger`:
+ * Buying changes the save in one place each:
  *
- *   { type: 'copy',    dexId, tier, form?, shiny, cost, at }   a bought copy
- *   { type: 'upgrade', dexId, form, cost, at }                 an upgrade form
- *   { type: 'fuse',    fusion, cost, at }                      a fusion made
- *   { type: 'unfuse',  fusion, cost: 0, at }                   a fusion undone
- *   { type: 'grant',   coins, cost: 0, at }                    coins handed out (test saves only)
+ *   a copy      a new entry in `pokemon` with `source: "shop"` and its `cost`
+ *   a form      a new entry in `unlocks` with `source: "shop"` and its `cost`
+ *   a fusion    a new entry in `fusions` with its `cost`
+ *   unfusing    stamps `undoneAt` on that fusion's entry; the cost stays
  *
- * Nothing else about the shop is stored. The coin balance, the copies you
- * hold, the forms you have unlocked and the fusions that are active are all
- * worked out from the ledger and the rewards, so they can never disagree.
+ * Reading the save (how many copies, which forms, how many coins) lives in
+ * holdings.js and is re-exported here, so the views can take everything
+ * about coins and purchases from this one module.
  */
 
-import { TIERS, collection } from './rewards.js';
-import { BASE, formsOf, variantsOf, nextForm } from './forms.js';
+import { TIERS } from './rewards.js';
+import { BASE, variantsOf, nextForm } from './forms.js';
+import {
+  COLLECTOR,
+  copiesOf,
+  hasShiny,
+  isCollector,
+  activeFusions,
+  spareCopies,
+  unlockedForms,
+  formNeeds,
+  balance,
+} from './holdings.js';
+
+export {
+  COLLECTOR,
+  trackCopies,
+  starterCopy,
+  copiesOf,
+  hasShiny,
+  isCollector,
+  activeFusions,
+  fusedCopies,
+  spareCopies,
+  unlockedForms,
+  coinsEarned,
+  coinsSpent,
+  balance,
+  wallet,
+} from './holdings.js';
 
 /** Shop prices, in Pokécoins. */
 export const PRICES = {
@@ -27,122 +55,6 @@ export const PRICES = {
 
 /** Spare copies of each source Pokémon needed before a fusion can be made. */
 export const FUSION_SPARE_NEEDED = 2;
-
-/**
- * Rules for a "collector" species: one whose forms unlock by copy count
- * rather than by coins or chance. Today that is Zygarde alone. A species is
- * a collector when data/forms.json gives it a form of kind "milestone".
- */
-export const COLLECTOR = {
-  copyCost: 1,
-  maxCopies: 100,
-  /** Form key -> copies needed. */
-  milestones: { 10: 10, complete: 100 },
-  /** Price of its upgrade form (Mega Zygarde), which needs Complete first. */
-  upgradeCost: 120,
-};
-
-// ------------------------------------------------------------------ coins
-
-const ledgerOf = (state) => (state.shop && Array.isArray(state.shop.ledger) ? state.shop.ledger : []);
-
-/**
- * One coin per reward on the track: every 100-point reward, and the starter.
- * Plus any coins handed out by "grant" entries in the ledger. The site never
- * writes a grant; they exist for test saves and hand-edited files.
- */
-export function coinsEarned(state) {
-  const granted = ledgerOf(state)
-    .filter((entry) => entry.type === 'grant')
-    .reduce((sum, entry) => sum + (Number(entry.coins) || 0), 0);
-  return state.rewards.length + (state.starter ? 1 : 0) + granted;
-}
-
-/** Everything ever spent. Unfusing costs nothing and refunds nothing. */
-export function coinsSpent(state) {
-  return ledgerOf(state).reduce((sum, entry) => sum + (Number(entry.cost) || 0), 0);
-}
-
-/** Coins available to spend. */
-export function balance(state) {
-  return coinsEarned(state) - coinsSpent(state);
-}
-
-// ------------------------------------------------------------------ holdings
-
-/** Every copy held of one species (starter, rolled and bought). */
-export function copiesOf(state, speciesId) {
-  return collection(state).filter((copy) => copy.dexId === speciesId);
-}
-
-/** Whether the shiny of a species has been obtained. */
-export function hasShiny(state, speciesId) {
-  return copiesOf(state, speciesId).some((copy) => copy.shiny);
-}
-
-/** Is this a collector species (Zygarde)? */
-export function isCollector(index, speciesId) {
-  return formsOf(index, speciesId).some((form) => form.kind === 'milestone');
-}
-
-/**
- * The ids of the fusions that currently exist: fused and not since unfused.
- * @returns {Set<number>}
- */
-export function activeFusions(state) {
-  const active = new Set();
-  for (const entry of ledgerOf(state)) {
-    if (entry.type === 'fuse') active.add(entry.fusion);
-    else if (entry.type === 'unfuse') active.delete(entry.fusion);
-  }
-  return active;
-}
-
-/**
- * Copies of a species that are tied up in a fusion right now. They still
- * count towards the species' copy total; they are just not spare.
- */
-export function fusedCopies(state, index, speciesId) {
-  let n = 0;
-  for (const id of activeFusions(state)) {
-    const fusion = index.fusionById.get(id);
-    if (fusion && (fusion.base === speciesId || fusion.partner === speciesId)) n++;
-  }
-  return n;
-}
-
-/** Copies of a species that are free to be put into a fusion. */
-export function spareCopies(state, index, speciesId) {
-  return copiesOf(state, speciesId).length - fusedCopies(state, index, speciesId);
-}
-
-/**
- * The forms of a species the player can use, as a set of form keys.
- *   base       as soon as one copy is held
- *   variant    once a copy has arrived in that form
- *   upgrade    once bought
- *   milestone  once enough copies are held
- */
-export function unlockedForms(state, index, speciesId) {
-  const copies = copiesOf(state, speciesId);
-  const unlocked = new Set();
-  if (copies.length === 0) return unlocked;
-  unlocked.add(BASE);
-  const held = new Set(copies.map((copy) => copy.form || BASE));
-  const bought = new Set(
-    ledgerOf(state)
-      .filter((entry) => entry.type === 'upgrade' && entry.dexId === speciesId)
-      .map((entry) => entry.form),
-  );
-  for (const form of formsOf(index, speciesId)) {
-    if (form.kind === 'variant' && held.has(form.key)) unlocked.add(form.key);
-    else if (form.kind === 'upgrade' && bought.has(form.key)) unlocked.add(form.key);
-    else if (form.kind === 'milestone' && copies.length >= (COLLECTOR.milestones[form.key] || Infinity)) {
-      unlocked.add(form.key);
-    }
-  }
-  return unlocked;
-}
 
 // ------------------------------------------------------------------ copies
 
@@ -180,28 +92,28 @@ export function copyOffer(state, index, species) {
  * form follows the same order as a roll (see nextForm). It does not move the
  * track, the luck gauge or the coin count.
  *
- * @param {object} state  Mutated: an entry is added to state.shop.ledger.
+ * @param {object} state  Mutated: a copy is added to state.pokemon.
  * @param {object} index  From indexForms().
  * @param {object} species Pokédex entry.
  * @param {{rng?: () => number, now?: number}} [options]
- * @returns {object} The ledger entry that was added.
+ * @returns {object} The copy that was added.
  */
 export function buyCopy(state, index, species, { rng = Math.random, now = Date.now() } = {}) {
   const offer = copyOffer(state, index, species);
   if (!offer.ok) throw new Error(offer.reason);
   const copies = copiesOf(state, species.id);
   const form = nextForm(index, species.id, copies.map((copy) => copy.form || BASE), rng);
-  const entry = {
-    type: 'copy',
+  const copy = {
+    source: 'shop',
     dexId: species.id,
     tier: species.tier,
     shiny: copies.length + 1 === TIERS[species.tier].cap,
     cost: offer.price,
     at: new Date(now).toISOString(),
   };
-  if (form !== BASE) entry.form = form;
-  addEntry(state, entry);
-  return entry;
+  if (form !== BASE) copy.form = form;
+  push(state, 'pokemon', copy);
+  return copy;
 }
 
 // ------------------------------------------------------------------ upgrades
@@ -209,31 +121,17 @@ export function buyCopy(state, index, species, { rng = Math.random, now = Date.n
 /**
  * Can an upgrade form be bought?
  *
- * Needs a copy of the Pokémon, artwork for the form, and anything the form
- * itself requires: another form unlocked first (`requires.form`), or a fusion
- * of the Pokémon in existence (`requires.fusionOf`).
+ * Needs a copy of the Pokémon, artwork for the form, anything the form
+ * itself requires (see formNeeds in holdings.js), and the coins.
  *
  * @returns {{ok:boolean, owned:boolean, price:number, reason:string}}
  */
 export function upgradeOffer(state, index, species, form) {
   const price = isCollector(index, species.id) ? COLLECTOR.upgradeCost : PRICES.upgrade;
-  const unlocked = unlockedForms(state, index, species.id);
-  if (unlocked.has(form.key)) return { ok: false, owned: true, price, reason: '' };
+  if (unlockedForms(state, index, species.id).has(form.key)) return { ok: false, owned: true, price, reason: '' };
   const no = (reason) => ({ ok: false, owned: false, price, reason });
-  if (!unlocked.has(BASE)) return no('NOT FOUND YET');
-  if (form.sprite === false) return no('ART NOT AVAILABLE YET');
-  const needs = form.requires || {};
-  if (needs.form && !unlocked.has(needs.form)) {
-    const needed = formsOf(index, species.id).find((f) => f.key === needs.form);
-    return no(`NEEDS ${(needed ? needed.label : needs.form).toUpperCase()} FIRST`);
-  }
-  if (needs.fusionOf) {
-    const fused = [...activeFusions(state)].some((id) => {
-      const fusion = index.fusionById.get(id);
-      return fusion && fusion.base === needs.fusionOf;
-    });
-    if (!fused) return no('NEEDS A FUSION FIRST');
-  }
+  const missing = formNeeds(state, index, species.id, form);
+  if (missing) return no(missing);
   if (balance(state) < price) return no('NOT ENOUGH COINS');
   return { ok: true, owned: false, price, reason: '' };
 }
@@ -243,13 +141,13 @@ export function buyUpgrade(state, index, species, form, { now = Date.now() } = {
   const offer = upgradeOffer(state, index, species, form);
   if (!offer.ok) throw new Error(offer.reason || 'ALREADY UNLOCKED');
   const entry = {
-    type: 'upgrade',
     dexId: species.id,
     form: form.key,
+    source: 'shop',
     cost: offer.price,
     at: new Date(now).toISOString(),
   };
-  addEntry(state, entry);
+  push(state, 'unlocks', entry);
   return entry;
 }
 
@@ -288,8 +186,8 @@ export function fusionOffer(state, index, fusion) {
 export function fuse(state, index, fusion, { now = Date.now() } = {}) {
   const offer = fusionOffer(state, index, fusion);
   if (!offer.ok) throw new Error(offer.reason || 'ALREADY FUSED');
-  const entry = { type: 'fuse', fusion: fusion.id, cost: offer.price, at: new Date(now).toISOString() };
-  addEntry(state, entry);
+  const entry = { fusion: fusion.id, cost: offer.price, at: new Date(now).toISOString(), undoneAt: null };
+  push(state, 'fusions', entry);
   return entry;
 }
 
@@ -307,17 +205,51 @@ export function unfuseOffer(state, fusion) {
 
 /**
  * Undo a fusion. The two copies become spare again. The coins paid for the
- * fusion are NOT returned.
+ * fusion are NOT returned: its entry stays in the save with its cost, and is
+ * only stamped with the time it was undone.
  */
 export function unfuse(state, fusion, { now = Date.now() } = {}) {
   const offer = unfuseOffer(state, fusion);
   if (!offer.ok) throw new Error(offer.reason);
-  const entry = { type: 'unfuse', fusion: fusion.id, cost: 0, at: new Date(now).toISOString() };
-  addEntry(state, entry);
+  const entry = state.fusions.find((f) => f.fusion === fusion.id && !f.undoneAt);
+  entry.undoneAt = new Date(now).toISOString();
   return entry;
 }
 
-function addEntry(state, entry) {
-  if (!state.shop || !Array.isArray(state.shop.ledger)) state.shop = { ledger: [] };
-  state.shop.ledger.push(entry);
+// ------------------------------------------------------------------ activity
+
+/**
+ * Everything that has happened to the coins, newest first: copies bought,
+ * forms unlocked (bought or bonus), fusions made and undone, coins granted.
+ * Used for the "Recent" list in the Shop.
+ *
+ * @returns {Array<{type:string, at:string, cost:number, dexId?:number,
+ *   form?:string, shiny?:boolean, fusion?:number, coins?:number}>}
+ *   `type` is one of copy, upgrade, bonus, fuse, unfuse, grant.
+ */
+export function activity(state) {
+  const items = [];
+  for (const copy of state.pokemon || []) {
+    if (copy.source === 'shop') items.push({ type: 'copy', at: copy.at, cost: copy.cost || 0, dexId: copy.dexId, form: copy.form, shiny: copy.shiny });
+  }
+  for (const entry of state.unlocks || []) {
+    items.push({ type: entry.source === 'shop' ? 'upgrade' : 'bonus', at: entry.at, cost: entry.cost || 0, dexId: entry.dexId, form: entry.form });
+  }
+  for (const entry of state.fusions || []) {
+    items.push({ type: 'fuse', at: entry.at, cost: entry.cost || 0, fusion: entry.fusion });
+    if (entry.undoneAt) items.push({ type: 'unfuse', at: entry.undoneAt, cost: 0, fusion: entry.fusion });
+  }
+  for (const entry of state.grants || []) {
+    items.push({ type: 'grant', at: entry.at, cost: 0, coins: entry.coins });
+  }
+  // Newest first; entries with the same time keep the order they were listed in.
+  return items
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => Date.parse(b.item.at) - Date.parse(a.item.at) || b.i - a.i)
+    .map(({ item }) => item);
+}
+
+function push(state, key, entry) {
+  if (!Array.isArray(state[key])) state[key] = [];
+  state[key].push(entry);
 }

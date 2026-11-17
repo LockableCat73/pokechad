@@ -217,15 +217,15 @@ button, input, select, textarea { font: inherit; color: inherit; text-transform:
    browsers ignore the ::-webkit-scrollbar rules below and draw their own
    rounded thumb. */
 @supports not selector(::-webkit-scrollbar) {
-  .reveal-grid, .copies, .table-scroll, .form-rows {
+  .reveal-grid, .table-scroll {
     scrollbar-width: thin;
     scrollbar-color: var(--muted) var(--paper-2);
   }
 }
-.reveal-grid::-webkit-scrollbar, .copies::-webkit-scrollbar, .table-scroll::-webkit-scrollbar, .form-rows::-webkit-scrollbar { width: 12px; height: 12px; }
-.reveal-grid::-webkit-scrollbar-track, .copies::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track, .form-rows::-webkit-scrollbar-track { background: var(--line); }
-.reveal-grid::-webkit-scrollbar-thumb, .copies::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb, .form-rows::-webkit-scrollbar-thumb { background: var(--muted); border: 0; border-radius: 0; }
-.reveal-grid::-webkit-scrollbar-corner, .copies::-webkit-scrollbar-corner, .table-scroll::-webkit-scrollbar-corner { background: var(--paper-2); }
+.reveal-grid::-webkit-scrollbar, .table-scroll::-webkit-scrollbar { width: 12px; height: 12px; }
+.reveal-grid::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track { background: var(--line); }
+.reveal-grid::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb { background: var(--muted); border: 0; border-radius: 0; }
+.reveal-grid::-webkit-scrollbar-corner, .table-scroll::-webkit-scrollbar-corner { background: var(--paper-2); }
 
 #view { display: flex; flex-direction: column; gap: 16px; padding-bottom: 24px; outline: none; }
 
@@ -502,21 +502,52 @@ button, input, select, textarea { font: inherit; color: inherit; text-transform:
 .badge-shiny { background: #282030; color: var(--gold); }
 .badge-new { background: var(--green); color: #fff; }
 
-.detail-art { display: grid; place-items: center; min-height: 192px; background: var(--paper-2); box-shadow: inset 0 0 0 4px var(--line); }
+/* A Pokédex entry: a full-page dialog (see .modal-layer.is-page). */
+.entry-no { font-size: 16px; line-height: 24px; color: var(--muted); }
+.entry-hero { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; padding: 16px; }
+.entry-hero.owned.tier-legendary { background: var(--legend-bg); }
+.entry-hero.owned.tier-mythical { background: var(--mythic-bg); }
+.entry-art { position: relative; display: grid; place-items: center; background: var(--paper-2); box-shadow: 0 0 0 4px var(--line); }
+.entry-art.shiny { box-shadow: 0 0 0 4px var(--gold); }
+.entry-art .cell-shiny { top: 8px; right: 8px; }
+.entry-id { min-width: 0; align-items: flex-start; }
+.entry-name { font-size: 16px; line-height: 24px; overflow-wrap: anywhere; }
+.entry-switch { align-self: stretch; max-width: 240px; }
+.entry-facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.fact { display: flex; flex-direction: column; gap: 4px; padding: 8px; min-width: 0; }
+.fact-value { font-size: 16px; line-height: 24px; }
 
-/* The list of a Pokémon's forms: name on the left, state or price on the right. */
-.form-rows { display: flex; flex-direction: column; gap: 4px; max-height: 196px; overflow-y: auto; }
+/* A Pokémon's forms: one tile each, picture on top, state or price below. */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+.form-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 8px 12px; min-width: 0; text-align: center; background: var(--paper-2); }
+.form-tile.open { background: var(--paper); }
+.form-tile.selected {
+  box-shadow:
+    0 -4px 0 0 var(--gold), 0 4px 0 0 var(--gold), -4px 0 0 0 var(--gold), 4px 0 0 0 var(--gold),
+    4px 8px 0 0 var(--shade), 8px 4px 0 0 var(--shade);
+}
+.form-tile .cannot { justify-content: center; text-align: center; }
+.form-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; padding: 0; border: 0;
+  background: transparent; cursor: pointer; font-size: 8px; line-height: 12px; color: var(--text);
+}
+button.form-pick:hover:not(:disabled) .form-name { text-decoration: underline; }
+button.form-pick:disabled { cursor: default; color: var(--muted); }
+.form-name { max-width: 100%; overflow-wrap: anywhere; }
+
+/* The plain list of forms used for Zygarde in the Shop. */
+.form-rows { display: flex; flex-direction: column; gap: 4px; }
 .form-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px;
   padding: 4px 8px; background: var(--paper-2);
 }
-.form-row.selected { box-shadow: inset 4px 0 0 0 var(--gold); }
-.form-pick {
-  padding: 4px 0; border: 0; background: transparent; cursor: pointer; text-align: left;
-  font-size: 8px; line-height: 12px; color: var(--text);
-}
-button.form-pick:hover:not(:disabled) { text-decoration: underline; }
-button.form-pick:disabled { cursor: default; color: var(--muted); }
+
+/* An entry's history: one row per copy or unlocked form, newest first. */
+.history-rows { display: flex; flex-direction: column; }
+.history-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px; box-shadow: inset 0 -4px 0 0 var(--line); }
+.history-row:last-child { box-shadow: none; }
+.history-row.shiny { background: var(--legend-bg); }
+.history-what { flex: 1; min-width: 132px; }
 
 /* Fusions: one card each. */
 .fusion-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 12px; }
@@ -543,7 +574,6 @@ button.form-pick:disabled { cursor: default; color: var(--muted); }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; font-size: 8px; }
 .facts dt { color: var(--muted); }
 .facts dd { text-align: right; }
-.copies { font-size: 8px; display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; }
 
 .history-list { display: flex; flex-direction: column; gap: 16px; }
 .entry { --k: var(--chad); padding: 12px 12px 12px 20px; display: flex; flex-direction: column; gap: 8px;
@@ -572,6 +602,17 @@ button.form-pick:disabled { cursor: default; color: var(--muted); }
   position: absolute; inset: 0; display: grid; place-items: center; padding: 16px;
   background: rgba(16, 12, 20, 0.72); overflow-y: auto; isolation: isolate;
 }
+/* A full-page dialog: covers the window like a page of its own, with the
+   page background instead of a dimmed backdrop. Used for a Pokédex entry. */
+.modal-layer.is-page {
+  display: block; padding: 0; background-color: var(--bg);
+  background-image:
+    linear-gradient(45deg, var(--bg-2) 25%, transparent 25%, transparent 75%, var(--bg-2) 75%),
+    linear-gradient(45deg, var(--bg-2) 25%, transparent 25%, transparent 75%, var(--bg-2) 75%);
+  background-size: 8px 8px; background-position: 0 0, 4px 4px;
+}
+.page { width: 100%; max-width: 680px; margin: 0 auto; padding: 16px 16px 48px; }
+.page p { font-size: 8px; }
 .modal { width: 100%; max-width: 440px; padding: 20px; margin: 8px; }
 .modal-small { max-width: 360px; }
 .modal-reveal { max-width: 400px; }
@@ -682,6 +723,9 @@ button.form-pick:disabled { cursor: default; color: var(--muted); }
   visibility: hidden;
 }
 #toast.show { transform: translate(-50%, 0); visibility: visible; }
+/* A reminder: a Pokémon beside the words. */
+#toast.with-picture { display: flex; align-items: center; gap: 12px; width: min(400px, calc(100vw - 48px)); padding: 4px 16px 4px 4px; text-align: left; line-height: 16px; }
+#toast.with-picture .sprite { flex: none; }
 
 /* ---------------------------------------------------------------- charts */
 
@@ -775,4 +819,9 @@ details summary { cursor: pointer; font-size: 8px; }
   .modal { padding: 16px; }
   .star-btn { width: 40px; height: 40px; }
   .statbar { grid-template-columns: 1fr 1fr; }
+  .page { padding-left: 12px; padding-right: 12px; }
+  .entry-hero { grid-template-columns: 1fr; justify-items: center; }
+  .entry-id { align-items: center; text-align: center; width: 100%; }
+  .entry-switch { max-width: none; }
+  .entry-facts { grid-template-columns: 1fr 1fr; }
 }

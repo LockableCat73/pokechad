@@ -10,7 +10,7 @@
 import { h, sprite, fmtClock, fmtNumber, fmtMinutes, dayKey } from '../dom.js';
 import { icon, luckGauge } from '../pixelart.js';
 import { resolveMon, currentBuddy } from '../mon.js';
-import { balance } from '../shop.js';
+import { balance, trackCopies, starterCopy } from '../shop.js';
 import { displayMultiplier, sessionPoints, STAR_MAX, POINTS_PER_REWARD } from '../scoring.js';
 import { PITY_LIMIT, STARTER_POINTS } from '../rewards.js';
 import * as stopwatch from '../stopwatch.js';
@@ -106,7 +106,7 @@ function actionButtons(ctx) {
       h('span', { class: 'action-title' }, title),
       h('span', { class: 'action-sub' }, sub));
   return h('section', { class: 'actions', 'aria-label': 'Record time' },
-    card('chud', 'ADD CHUD TIME', 'SLACKING, SCROLLING', 'assets/icons/snorlax.png'),
+    card('chud', 'ADD CHUD TIME', 'SLACKING, SCROLLING', 'assets/icons/snorlax-gmax.png'),
     card('chad', 'ADD CHAD TIME', 'WORK, STUDY, GYM', 'assets/icons/zacian-crowned.png'));
 }
 
@@ -135,7 +135,7 @@ function openChoice(ctx, kind) {
 function sessionPanel(ctx) {
   const active = ctx.state.active;
   const paused = Boolean(active.pausedAt);
-  const image = active.kind === 'chad' ? 'assets/icons/zacian-crowned.png' : 'assets/icons/snorlax.png';
+  const image = active.kind === 'chad' ? 'assets/icons/zacian-crowned.png' : 'assets/icons/snorlax-gmax.png';
 
   const clock = h('div', { class: 'clock', role: 'timer', 'aria-label': 'Active time' }, '00:00');
   const multiplier = h('span', { class: 'multiplier-value' }, 'x1.00');
@@ -184,8 +184,8 @@ function sessionPanel(ctx) {
 function progressPanel(ctx) {
   const { state } = ctx;
   const net = state.score.net;
-  const claimed = state.rewards.length;
-  const awaitingStarter = !state.starter;
+  const claimed = trackCopies(state).length;
+  const awaitingStarter = !starterCopy(state);
   const target = awaitingStarter ? STARTER_POINTS : (claimed + 1) * POINTS_PER_REWARD;
   const toGo = Math.max(0, target - net);
   // The buddy can be a Pokémon in any unlocked form, or a fusion.
@@ -264,7 +264,11 @@ function fillTrack(ctx, strip) {
   const width = strip.clientWidth;
   if (!width) return;
   const net = state.score.net;
-  const claimed = state.rewards.length;
+  // Only copies rolled on the track are stations. Copies bought in the shop
+  // or given as gifts are held, but have no place here.
+  const track = trackCopies(state);
+  const starter = starterCopy(state);
+  const claimed = track.length;
 
   const count = Math.max(2, Math.floor(width / TRACK_STEP));
   const step = Math.floor(width / count);
@@ -277,10 +281,10 @@ function fillTrack(ctx, strip) {
 
   const stations = [];
   for (let n = 0; n < total; n++) {
-    const reward = n >= 1 ? state.rewards[n - 1] : state.starter;
+    const reward = n >= 1 ? track[n - 1] : starter;
     // Shown in the form the copy arrived in (an Alolan Vulpix stays Alolan).
     const species = reward ? resolveMon(ctx, reward) : null;
-    const isNext = state.starter ? n === claimed + 1 : n === 0;
+    const isNext = starter ? n === claimed + 1 : n === 0;
     const inHome = n >= first && n < first + count;
     const art = reward
       ? sprite(species, { shiny: Boolean(reward.shiny), eager: inHome })

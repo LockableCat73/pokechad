@@ -9,7 +9,6 @@
  */
 
 import { h, dayKey, fmtMinutes, fmtNumber } from '../dom.js';
-import { collection } from '../rewards.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const RANGES = [14, 30, 90];
@@ -224,7 +223,7 @@ export function render(ctx, root) {
   const chudMin = sum(chud, (s) => s.activeMinutes);
   const average = (list) => (list.length ? (sum(list, (s) => s.stars) / list.length).toFixed(1) : '-');
   const share = chadMin + chudMin > 0 ? `${Math.round((chadMin / (chadMin + chudMin)) * 100)}%` : '-';
-  const copies = collection(state);
+  const copies = state.pokemon;
 
   const charts = h('div', { class: 'stack' });
   const rangeButtons = RANGES.map((days) =>
