@@ -4,7 +4,6 @@
 
 import { h, fmtDateTime, fmtDate } from '../dom.js';
 import { STORAGE_KEY, SCHEMA } from '../state.js';
-import { collection } from '../rewards.js';
 
 export function render(ctx, root) {
   const { state, dex } = ctx;
@@ -47,7 +46,7 @@ export function render(ctx, root) {
       h('h2', {}, 'ABOUT'),
       h('dl', { class: 'facts' },
         h('dt', {}, 'SESSIONS'), h('dd', {}, String(state.sessions.length)),
-        h('dt', {}, 'POKéMON'), h('dd', {}, String(collection(state).length)),
+        h('dt', {}, 'POKéMON'), h('dd', {}, String(state.pokemon.length)),
         h('dt', {}, 'STARTED'), h('dd', {}, fmtDate(state.createdAt)),
         h('dt', {}, 'POKéDEX DATA'), h('dd', {}, `${dex.species.length} SPECIES · ${dex.updatedAt ? fmtDate(dex.updatedAt) : '?'}`),
         h('dt', {}, 'SAVE FORMAT'), h('dd', {}, `${STORAGE_KEY} · SCHEMA ${SCHEMA}`)),

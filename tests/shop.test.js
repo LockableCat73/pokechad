@@ -2,7 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { TIERS, rollReward, grantOwed, collection, countOwned, eligible } from '../js/rewards.js';
+import {
+  TIERS,
+  rollReward,
+  grantOwed,
+  countOwned,
+  eligible,
+  BONUS_FORM_CHANCE,
+  bonusCandidates,
+  rollBonusForm,
+} from '../js/rewards.js';
 import { BASE, indexForms, formsOf, variantsOf, findForm, formLabel, displayName, nextForm, NO_FORMS } from '../js/forms.js';
 import {
   PRICES,
@@ -25,6 +34,9 @@ import {
   fuse,
   unfuseOffer,
   unfuse,
+  trackCopies,
+  starterCopy,
+  activity,
 } from '../js/shop.js';
 import { defaultState, normalize, exportJSON, importJSON } from '../js/state.js';
 
@@ -42,13 +54,13 @@ function seeded(seed = 1) {
   };
 }
 
-/** A save holding the given copies; each is one reward, so also one coin. */
+/** A save holding the given copies; each is one reward on the track, so also one coin. */
 function saveWith(holdings = {}, extraCoins = 0) {
   const state = defaultState(Date.parse('2026-01-01T00:00:00Z'));
   const add = (species, form) => {
-    const reward = { dexId: species.id, tier: species.tier, shiny: false, pity: false };
+    const reward = { source: 'track', dexId: species.id, tier: species.tier, shiny: false, pity: false, at: '2026-01-01T00:00:00.000Z' };
     if (form) reward.form = form;
-    state.rewards.push(reward);
+    state.pokemon.push(reward);
   };
   for (const [slug, count] of Object.entries(holdings)) {
     for (let i = 0; i < count; i++) add(mon(slug));
@@ -138,7 +150,10 @@ test('display names read naturally', () => {
 test('one coin per reward on the track, starter included', () => {
   const state = saveWith({ pidgey: 3 });
   assert.equal(coinsEarned(state), 3);
-  state.starter = { dexId: 4, at: '2026-01-01T00:00:00.000Z', sessionId: null };
+  state.pokemon.push({ source: 'starter', dexId: 4, tier: 'common', shiny: false, at: '2026-01-01T00:00:00.000Z', sessionId: null });
+  assert.equal(coinsEarned(state), 4);
+  // A gift is held but earns nothing.
+  state.pokemon.push({ source: 'gift', dexId: 25, tier: 'common', shiny: false, at: '2026-01-01T00:00:00.000Z' });
   assert.equal(coinsEarned(state), 4);
   assert.equal(coinsSpent(state), 0);
   assert.equal(balance(state), 4);
@@ -147,8 +162,11 @@ test('one coin per reward on the track, starter included', () => {
 test('bought copies cost coins but earn none and do not move the track', () => {
   const state = saveWith({ pidgey: 1 }, 9);
   assert.equal(balance(state), 10);
-  buyCopy(state, forms, mon('pidgey'));
-  assert.equal(state.rewards.length, 10, 'no reward was added');
+  const copy = buyCopy(state, forms, mon('pidgey'));
+  assert.equal(copy.source, 'shop');
+  assert.equal(copy.cost, 5);
+  assert.equal(state.pokemon.at(-1), copy);
+  assert.equal(trackCopies(state).length, 10, 'no reward was added');
   assert.equal(coinsEarned(state), 10);
   assert.equal(balance(state), 5);
   assert.equal(copiesOf(state, mon('pidgey').id).length, 2);
@@ -198,12 +216,12 @@ test('rolls still stop at the limit, counting bought copies', () => {
   const state = saveWith({ pidgey: 5 }, 100);
   buyCopy(state, forms, mon('pidgey'));
   buyCopy(state, forms, mon('pidgey'));
-  const counts = countOwned(collection(state));
+  const counts = countOwned(state.pokemon);
   assert.equal(counts.get(mon('pidgey').id), 7);
   assert.ok(!eligible(dex, counts, 'common').some((s) => s.id === mon('pidgey').id));
   // With only Pidgey in the pool, nothing is left to roll.
   const only = [mon('pidgey')];
-  assert.equal(rollReward({ species: only, rewards: state.rewards, shop: state.shop, forms, rng: seeded(1) }), null);
+  assert.equal(rollReward({ species: only, state, forms, rng: seeded(1) }), null);
 });
 
 test('mythicals stop at 2, except while formes are still missing (Deoxys reaches 4)', () => {
@@ -244,15 +262,16 @@ test('forms unlock one per copy in Pokédex order, then at random', () => {
 test('rolled copies follow the same order as bought ones', () => {
   // Start past the early game (18 rewards), where Rotom (#479) can be rolled.
   const pool = [mon('rotom')];
-  const rewards = saveWith({}, 18).rewards;
+  const state = saveWith({}, 18);
   for (let i = 0; i < 6; i++) {
-    const roll = rollReward({ species: pool, rewards, forms, rng: seeded(i + 3) });
-    rewards.push({ dexId: roll.dexId, tier: roll.tier, shiny: roll.shiny, form: roll.form });
+    const roll = rollReward({ species: pool, state, forms, rng: seeded(i + 3) });
+    state.pokemon.push({ source: 'track', dexId: roll.dexId, tier: roll.tier, shiny: roll.shiny, form: roll.form });
   }
-  assert.deepEqual(rewards.slice(18).map((r) => r.form), ['base', 'heat', 'wash', 'frost', 'fan', 'mow']);
+  assert.deepEqual(state.pokemon.slice(18).map((r) => r.form), ['base', 'heat', 'wash', 'frost', 'fan', 'mow']);
   // grantOwed writes the form down only when it is not Base.
-  const granted = [];
-  grantOwed({ highWater: 300, rewards: granted, species: [mon('vulpix')], forms, rng: seeded(5) });
+  const fresh = saveWith();
+  fresh.score = { net: 300, highWater: 300 };
+  const granted = grantOwed({ state: fresh, species: [mon('vulpix')], forms, rng: seeded(5) });
   assert.equal(granted[0].form, undefined);
   assert.equal(granted[1].form, 'alola');
   assert.ok([undefined, 'alola'].includes(granted[2].form));
@@ -260,10 +279,12 @@ test('rolled copies follow the same order as bought ones', () => {
 
 test('a mix of rolled and bought copies shares one order', () => {
   const state = saveWith({ rotom: 1 }, 100);
-  state.rewards.push({ dexId: mon('rotom').id, tier: 'common', shiny: false, form: 'heat' });
+  state.pokemon.push({ source: 'track', dexId: mon('rotom').id, tier: 'common', shiny: false, form: 'heat' });
   assert.equal(buyCopy(state, forms, mon('rotom')).form, 'wash');
-  const roll = rollReward({ species: [mon('rotom')], rewards: state.rewards, shop: state.shop, forms, rng: seeded(2) });
-  assert.equal(roll.form, 'frost');
+  // A gift copy takes its place in the same order.
+  state.pokemon.push({ source: 'gift', dexId: mon('rotom').id, tier: 'common', shiny: false, form: 'frost' });
+  const roll = rollReward({ species: [mon('rotom')], state, forms, rng: seeded(2) });
+  assert.equal(roll.form, 'fan');
 });
 
 test('a species with no alternate forms is always Base and uses no randomness', () => {
@@ -287,7 +308,9 @@ test('an upgrade costs 150, needs the Pokémon, and is bought once', () => {
 
   const state = saveWith({ charizard: 1 }, 320);
   assert.deepEqual(upgradeOffer(state, forms, charizard, megaX), { ok: true, owned: false, price: 150, reason: '' });
-  buyUpgrade(state, forms, charizard, megaX);
+  const bought = buyUpgrade(state, forms, charizard, megaX);
+  assert.deepEqual(state.unlocks, [bought]);
+  assert.deepEqual({ ...bought, at: null }, { dexId: charizard.id, form: 'mega-x', source: 'shop', cost: 150, at: null });
   assert.equal(balance(state), 321 - 150);
   assert.equal(upgradeOffer(state, forms, charizard, megaX).owned, true);
   assert.throws(() => buyUpgrade(state, forms, charizard, megaX), /ALREADY UNLOCKED/);
@@ -371,11 +394,17 @@ test('fusing sets one copy of each aside; unfusing returns them but never the co
   assert.equal(spareCopies(state, forms, kyurem.id), 2);
   assert.equal(spareCopies(state, forms, mon('reshiram').id), 2);
   assert.equal(balance(state), before - 300, 'coins are not returned');
-  assert.equal(state.shop.ledger.at(-1).cost, 0);
+  // The undone fusion keeps its entry and its cost; it is only stamped.
+  assert.equal(state.fusions.length, 2);
+  assert.equal(state.fusions[0].cost, 150);
+  assert.ok(state.fusions[0].undoneAt);
+  assert.equal(state.fusions[1].undoneAt, null);
 
-  // Fusing again costs again.
+  // Fusing again costs again, and is a new entry.
   fuse(state, forms, white);
   assert.equal(balance(state), before - 450);
+  assert.equal(state.fusions.length, 3);
+  assert.deepEqual([...activeFusions(state)].sort(), [white.id, black.id].sort());
 });
 
 test('a fusion cannot be undone while it is the buddy', () => {
@@ -454,86 +483,282 @@ test('the shop survives export and import unchanged', () => {
   buyUpgrade(state, forms, mon('charizard'), findForm(forms, mon('charizard').id, 'mega-x'));
   const white = forms.fusions.find((f) => f.label === 'White Kyurem');
   fuse(state, forms, white);
-  state.rewards.push({ dexId: mon('vulpix').id, tier: 'common', shiny: false, pity: false, form: 'alola' });
+  state.pokemon.push({ source: 'track', dexId: mon('vulpix').id, tier: 'common', shiny: false, pity: false, form: 'alola' });
   state.buddy = { fusion: white.id, shiny: false };
 
   const round = importJSON(exportJSON(normalize(JSON.parse(JSON.stringify(state)))));
-  assert.equal(round.shop.ledger.length, 3);
-  assert.deepEqual(round.shop.ledger.map((e) => e.type), ['copy', 'upgrade', 'fuse']);
-  assert.equal(round.shop.ledger[0].form, 'heat');
-  assert.equal(round.rewards.at(-1).form, 'alola');
+  const bought = round.pokemon.filter((c) => c.source === 'shop');
+  assert.equal(bought.length, 1);
+  assert.equal(bought[0].form, 'heat');
+  assert.equal(bought[0].cost, 5);
+  assert.deepEqual(round.unlocks.map((u) => [u.dexId, u.form, u.source, u.cost]), [[6, 'mega-x', 'shop', 150]]);
+  assert.deepEqual(round.fusions.map((f) => [f.fusion, f.cost, f.undoneAt]), [[white.id, 150, null]]);
+  assert.equal(round.pokemon.at(-1).form, 'alola');
   assert.deepEqual(round.buddy, { fusion: white.id, shiny: false });
   assert.equal(balance(round), balance(state));
+  assert.deepEqual(round.wallet, { earned: 407, spent: 305, balance: 102 });
   assert.deepEqual([...activeFusions(round)], [white.id]);
   assert.ok(unlockedForms(round, forms, mon('charizard').id).has('mega-x'));
 
-  const formBuddy = normalize({ app: 'pokechad', schema: 1, buddy: { dexId: 6, shiny: true, form: 'mega-x' } });
+  const formBuddy = normalize({ app: 'pokechad', schema: 2, buddy: { dexId: 6, shiny: true, form: 'mega-x' } });
   assert.deepEqual(formBuddy.buddy, { dexId: 6, shiny: true, form: 'mega-x' });
-  assert.deepEqual(normalize({ app: 'pokechad', schema: 1, buddy: { dexId: 6, form: 'base' } }).buddy, { dexId: 6, shiny: false });
+  assert.deepEqual(normalize({ app: 'pokechad', schema: 2, buddy: { dexId: 6, form: 'base' } }).buddy, { dexId: 6, shiny: false });
 });
 
-test('a grant entry hands out coins; the test save holds one of each and a million coins', () => {
-  const state = normalize({ app: 'pokechad', schema: 1, rewards: [{ dexId: 1 }], shop: { ledger: [{ type: 'grant', coins: 500 }] } });
+test('a grant hands out coins; the test saves hold every Pokémon as a gift and a million coins', () => {
+  const state = normalize({ app: 'pokechad', schema: 2, pokemon: [{ source: 'track', dexId: 1 }], grants: [{ coins: 500 }] });
   assert.equal(coinsEarned(state), 501);
   assert.equal(balance(state), 501);
-  assert.deepEqual(state.shop.ledger[0], { type: 'grant', coins: 500, cost: 0, at: state.shop.ledger[0].at });
+  assert.deepEqual(state.grants[0], { coins: 500, at: state.grants[0].at });
   for (const coins of [-1, 2.5, 'lots', undefined]) {
-    assert.throws(
-      () => normalize({ app: 'pokechad', schema: 1, shop: { ledger: [{ type: 'grant', coins }] } }),
-      /Shop entry 1: "coins"/,
-    );
+    assert.throws(() => normalize({ app: 'pokechad', schema: 2, grants: [{ coins }] }), /Grant 1: "coins"/);
   }
 
   const save = importJSON(readFileSync(new URL('./all-pokemon-save.json', import.meta.url), 'utf8'));
-  const counts = countOwned(collection(save));
+  assert.equal(save.schema, 2);
+  const counts = countOwned(save.pokemon);
   for (const species of dex) {
     assert.equal(counts.get(species.id) || 0, species.slug === 'charmander' ? 0 : 1, species.name);
   }
-  assert.equal(save.rewards.length, dex.length - 1);
-  assert.ok(save.rewards.every((r) => !r.shiny && !r.form));
+  assert.equal(save.pokemon.length, dex.length - 1);
+  assert.ok(save.pokemon.every((c) => c.source === 'gift' && !c.shiny && !c.form));
   assert.equal(save.sessions.length, 0);
-  assert.equal(save.starter, null);
   assert.equal(balance(save), 1_000_000);
+  // Nothing in it was earned on the track: the track is untouched, the
+  // starter is still to be chosen, and the luck gauge starts from zero.
+  assert.equal(trackCopies(save).length, 0);
+  assert.equal(starterCopy(save), null);
+  assert.equal(save.pity.dry, 0);
 
   // The second test save: ten copies of each, following the game's rules.
   const ten = importJSON(readFileSync(new URL('./all-pokemon-x10-save.json', import.meta.url), 'utf8'));
-  const tenCounts = countOwned(collection(ten));
+  const tenCounts = countOwned(ten.pokemon);
   for (const species of dex) {
     assert.equal(tenCounts.get(species.id) || 0, species.slug === 'charmander' ? 0 : 10, species.name);
     if (species.slug === 'charmander') continue;
-    assert.equal(ten.rewards.filter((r) => r.dexId === species.id && r.shiny).length, 1, `one shiny ${species.name}`);
+    assert.equal(ten.pokemon.filter((r) => r.dexId === species.id && r.shiny).length, 1, `one shiny ${species.name}`);
     const wanted = variantsOf(forms, species.id).map((v) => v.key);
     assert.deepEqual([...unlockedForms(ten, forms, species.id)].filter((k) => k !== BASE && wanted.includes(k)).sort(), wanted.slice().sort());
   }
   assert.deepEqual(copiesOf(ten, mon('rotom').id).map((c) => c.form || BASE).slice(0, 7), ['base', 'heat', 'wash', 'frost', 'fan', 'mow', 'base']);
   assert.ok(unlockedForms(ten, forms, mon('zygarde').id).has('10'));
+  assert.ok(ten.pokemon.every((c) => c.source === 'gift'));
+  assert.equal(trackCopies(ten).length, 0);
   assert.equal(balance(ten), 1_000_000);
 });
 
-test('an old save with no shop loads with an empty ledger', () => {
+test('with a test save loaded, the first reward earned is reward number 1', () => {
+  const save = importJSON(readFileSync(new URL('./all-pokemon-x10-save.json', import.meta.url), 'utf8'));
+  save.score = { net: 250, highWater: 250 };
+  const granted = grantOwed({ state: save, species: dex, forms, rng: seeded(12) });
+  // Every common is past its limit of 7, so only what is left can be rolled:
+  // nothing at all, or Charmander's family once it has been started.
+  assert.deepEqual(granted.map((c) => c.n), granted.map((_, i) => i + 1));
+  for (const copy of granted) assert.equal(copy.source, 'track');
+  assert.equal(trackCopies(save).length, granted.length);
+  assert.equal(coinsEarned(save), 1_000_000 + granted.length);
+});
+
+test('a version 1 save with no shop converts with nothing in the shop lists', () => {
   const old = normalize({ app: 'pokechad', schema: 1, rewards: [{ dexId: 1 }, { dexId: 4 }] });
-  assert.deepEqual(old.shop, { ledger: [] });
+  assert.deepEqual([old.unlocks, old.fusions, old.grants], [[], [], []]);
+  assert.deepEqual(old.pokemon.map((c) => c.source), ['track', 'track']);
   assert.equal(balance(old), 2, 'rewards already held count as coins');
 });
 
-test('editing the ledger by hand changes the balance; bad entries are rejected', () => {
+test('editing the save by hand changes the balance; bad entries are rejected', () => {
   const state = saveWith({ pidgey: 1 }, 20);
   buyCopy(state, forms, mon('pidgey'));
   buyCopy(state, forms, mon('pidgey'));
   const file = JSON.parse(exportJSON(state));
-  file.shop.ledger.pop(); // remove one purchase: its 5 coins come back
+  file.pokemon.pop(); // remove one purchase: its 5 coins come back
+  file.wallet = { earned: 1, spent: 1, balance: 999999 }; // stale, must be ignored
   const edited = normalize(file);
   assert.equal(balance(edited), balance(state) + 5);
+  assert.deepEqual(edited.wallet, { earned: 21, spent: 5, balance: 16 });
   assert.equal(copiesOf(edited, mon('pidgey').id).length, 2);
 
-  const bad = (entry, pattern) =>
+  // Turning a bought copy into a gift keeps the copy and returns its coins.
+  const gifted = JSON.parse(exportJSON(state));
+  gifted.pokemon.at(-1).source = 'gift';
+  assert.equal(balance(normalize(gifted)), balance(state) + 5);
+  assert.equal(normalize(gifted).pokemon.at(-1).cost, undefined);
+
+  const bad = (patch, pattern) => assert.throws(() => normalize({ app: 'pokechad', schema: 2, ...patch }), pattern);
+  bad({ pokemon: [{ source: 'found', dexId: 1 }] }, /Pokémon 1: "source"/);
+  bad({ pokemon: [{ source: 'shop', dexId: 'x' }] }, /Pokémon 1: "dexId"/);
+  bad({ pokemon: [{ source: 'shop', dexId: 1, cost: -5 }] }, /Pokémon 1: "cost"/);
+  bad({ unlocks: [{ dexId: 6 }] }, /Unlock 1: "form"/);
+  bad({ unlocks: [{ dexId: 6, form: 'mega-x', source: 'found' }] }, /Unlock 1: "source"/);
+  bad({ fusions: [{ fusion: 'white' }] }, /Fusion 1: "fusion"/);
+  // Only a bought form costs anything, whatever the file says.
+  const free = normalize({ app: 'pokechad', schema: 2, unlocks: [{ dexId: 6, form: 'mega-x', source: 'bonus', cost: 99 }] });
+  assert.equal(free.unlocks[0].cost, 0);
+  // The same checks apply to a version 1 file on its way in.
+  const badV1 = (entry, pattern) =>
     assert.throws(() => normalize({ app: 'pokechad', schema: 1, shop: { ledger: [entry] } }), pattern);
-  bad({ type: 'gift', dexId: 1 }, /Shop entry 1: "type"/);
-  bad({ type: 'copy', dexId: 'x' }, /Shop entry 1: "dexId"/);
-  bad({ type: 'copy', dexId: 1, cost: -5 }, /Shop entry 1: "cost"/);
-  bad({ type: 'upgrade', dexId: 6 }, /Shop entry 1: "form"/);
-  bad({ type: 'fuse', fusion: 'white' }, /Shop entry 1: "fusion"/);
-  // An unfuse never carries a cost, whatever the file says.
-  const free = normalize({ app: 'pokechad', schema: 1, shop: { ledger: [{ type: 'unfuse', fusion: 5, cost: 99 }] } });
-  assert.equal(free.shop.ledger[0].cost, 0);
+  badV1({ type: 'gift', dexId: 1 }, /Shop entry 1: "type"/);
+  badV1({ type: 'copy', dexId: 'x' }, /"dexId"/);
+  badV1({ type: 'upgrade', dexId: 6 }, /"form"/);
+  badV1({ type: 'fuse', fusion: 'white' }, /"fusion"/);
+});
+
+test('the recent list covers purchases, bonus forms, fusions and grants, newest first', () => {
+  const state = saveWith({ pidgey: 1, kyurem: 2, reshiram: 2, charizard: 1 }, 600);
+  const white = forms.fusions.find((f) => f.label === 'White Kyurem');
+  const at = (n) => ({ now: Date.parse('2026-02-01T00:00:00Z') + n * 1000 });
+  state.grants.push({ coins: 50, at: new Date(at(0).now).toISOString() });
+  buyCopy(state, forms, mon('pidgey'), at(1));
+  buyUpgrade(state, forms, mon('charizard'), findForm(forms, mon('charizard').id, 'mega-x'), at(2));
+  fuse(state, forms, white, at(3));
+  unfuse(state, white, at(4));
+  state.unlocks.push({ dexId: 6, form: 'gmax', source: 'bonus', cost: 0, at: new Date(at(5).now).toISOString() });
+  assert.deepEqual(
+    activity(state).map((e) => [e.type, e.cost]),
+    [['bonus', 0], ['unfuse', 0], ['fuse', 150], ['upgrade', 150], ['copy', 5], ['grant', 0]],
+  );
+  // Rewards and gifts are not shop activity.
+  assert.equal(activity(saveWith({ pidgey: 3 })).length, 0);
+});
+
+// ---------------------------------------------------------------- bonus forms
+
+/** An rng that returns the given numbers in turn, and fails if asked for more. */
+function scripted(...values) {
+  const queue = values.slice();
+  return () => {
+    if (queue.length === 0) throw new Error('rng called more often than expected');
+    return queue.shift();
+  };
+}
+
+test('bonus forms are the paid forms still locked, with artwork and their needs met', () => {
+  const keys = (state, slug) => bonusCandidates(state, forms, mon(slug).id).map((f) => f.key);
+  const state = saveWith({ charizard: 1, vulpix: 1, pidgey: 1, darmanitan: 1, necrozma: 2, solgaleo: 2, zygarde: 100 }, 400);
+  assert.deepEqual(keys(state, 'charizard'), ['mega-x', 'mega-y', 'gmax']);
+  // Not held at all: nothing.
+  assert.deepEqual(keys(state, 'gengar'), []);
+  // Free alternate forms are not paid forms.
+  assert.deepEqual(keys(state, 'vulpix'), []);
+  assert.deepEqual(keys(state, 'pidgey'), []);
+  // Never Zygarde, whatever it holds.
+  assert.deepEqual(keys(state, 'zygarde'), []);
+
+  // Already unlocked forms drop out, bought or bonus alike.
+  buyUpgrade(state, forms, mon('charizard'), findForm(forms, mon('charizard').id, 'mega-y'));
+  state.unlocks.push({ dexId: 6, form: 'gmax', source: 'bonus', cost: 0, at: '2026-01-01T00:00:00.000Z' });
+  assert.deepEqual(keys(state, 'charizard'), ['mega-x']);
+
+  // A form's own requirement still holds: Galarian Zen needs Galarian first...
+  assert.deepEqual(keys(state, 'darmanitan'), ['zen']);
+  buyCopy(state, forms, mon('darmanitan'));
+  assert.deepEqual(keys(state, 'darmanitan'), ['zen', 'galar-zen']);
+  // ...and Ultra Necrozma needs a fusion to exist.
+  assert.deepEqual(keys(state, 'necrozma'), []);
+  fuse(state, forms, forms.fusions.find((f) => f.label === 'Dusk Mane Necrozma'));
+  assert.deepEqual(keys(state, 'necrozma'), ['ultra']);
+});
+
+test('the bonus is a 1-in-12 chance whatever the number of forms, then an even pick', () => {
+  assert.equal(BONUS_FORM_CHANCE, 1 / 12);
+  const charizard = mon('charizard').id;
+  const state = saveWith({ charizard: 1, kyogre: 1 });
+  // Just under 1/12 hits, 1/12 itself misses.
+  assert.equal(rollBonusForm(state, forms, charizard, scripted(1 / 12 - 1e-9, 0)), 'mega-x');
+  assert.equal(rollBonusForm(state, forms, charizard, scripted(1 / 12)), null);
+  // On a hit the pick is spread evenly over the forms left.
+  assert.equal(rollBonusForm(state, forms, charizard, scripted(0, 0.34)), 'mega-y');
+  assert.equal(rollBonusForm(state, forms, charizard, scripted(0, 0.99)), 'gmax');
+  // Nothing left to unlock: no roll at all.
+  assert.equal(rollBonusForm(state, forms, mon('pidgey').id, scripted()), null);
+
+  // Three forms (Charizard) or one (Kyogre): the rate is the same.
+  for (const slug of ['charizard', 'kyogre']) {
+    const rng = seeded(31);
+    let hits = 0;
+    const tries = 24_000;
+    const seen = new Set();
+    for (let i = 0; i < tries; i++) {
+      const form = rollBonusForm(state, forms, mon(slug).id, rng);
+      if (form) {
+        hits++;
+        seen.add(form);
+      }
+    }
+    assert.ok(Math.abs(hits / tries - 1 / 12) < 0.006, `${slug}: ${hits} hits`);
+    assert.equal(seen.size, slug === 'charizard' ? 3 : 1);
+  }
+});
+
+test('a track roll can bring a bonus form only for a Pokémon already held', () => {
+  const pool = [mon('charizard')];
+  // First copy ever: tier roll, species pick, and that is all.
+  const first = rollReward({ species: pool, state: saveWith({}, 18), forms, rng: scripted(0.5, 0) });
+  assert.equal(first.dexId, 6);
+  assert.equal(first.bonusForm, null);
+  // A later copy: one more number decides the bonus, and one more picks it.
+  const state = saveWith({ charizard: 1 }, 18);
+  assert.equal(rollReward({ species: pool, state, forms, rng: scripted(0.5, 0, 0.5) }).bonusForm, null);
+  assert.equal(rollReward({ species: pool, state, forms, rng: scripted(0.5, 0, 0.01, 0.5) }).bonusForm, 'mega-y');
+  // Without the forms data there are no forms to win.
+  assert.equal(rollReward({ species: pool, state, rng: scripted(0.5, 0) }).bonusForm, null);
+});
+
+test('granting a reward with a bonus records the form, and never the same form twice', () => {
+  const state = saveWith({ charizard: 1 }, 18);
+  state.score = { net: 0, highWater: (19 + 5) * 100 };
+  // Five more Charizard, every one hitting the bonus (first pick each time).
+  const always = () => 0;
+  const granted = grantOwed({ state, species: [mon('charizard')], forms, at: '2026-03-01T00:00:00.000Z', rng: always });
+  assert.equal(granted.length, 5);
+  assert.deepEqual(granted.map((c) => c.bonusForm), ['mega-x', 'mega-y', 'gmax', undefined, undefined]);
+  assert.deepEqual(state.unlocks, [
+    { dexId: 6, form: 'mega-x', source: 'bonus', cost: 0, at: '2026-03-01T00:00:00.000Z' },
+    { dexId: 6, form: 'mega-y', source: 'bonus', cost: 0, at: '2026-03-01T00:00:00.000Z' },
+    { dexId: 6, form: 'gmax', source: 'bonus', cost: 0, at: '2026-03-01T00:00:00.000Z' },
+  ]);
+  assert.deepEqual([...unlockedForms(state, forms, 6)].sort(), ['base', 'gmax', 'mega-x', 'mega-y']);
+  // A bonus is free: the coins only went up, by one per reward.
+  assert.equal(coinsSpent(state), 0);
+  assert.equal(coinsEarned(state), 19 + 5);
+  // The form is no longer for sale, and it survives a save and reload.
+  assert.equal(upgradeOffer(state, forms, mon('charizard'), findForm(forms, 6, 'mega-x')).owned, true);
+  const round = importJSON(exportJSON(state));
+  assert.deepEqual(round.unlocks, state.unlocks);
+  assert.equal(trackCopies(round).at(-5).bonusForm, 'mega-x');
+});
+
+test('bought copies never bring a bonus form', () => {
+  const state = saveWith({ charizard: 1 }, 400);
+  for (let i = 0; i < 20; i++) buyCopy(state, forms, mon('charizard'), { rng: () => 0 });
+  assert.deepEqual(state.unlocks, []);
+  assert.ok(state.pokemon.every((c) => c.bonusForm === undefined));
+});
+
+test('over a long game about 1 in 12 repeat rewards with a form to win brings one', () => {
+  let chances = 0;
+  let bonuses = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const state = saveWith();
+    const rng = seeded(seed);
+    for (let n = 0; n < 2500; n++) {
+      const roll = rollReward({ species: dex, state, forms, rng });
+      if (!roll) break;
+      const repeat = state.pokemon.some((c) => c.dexId === roll.dexId);
+      if (repeat && bonusCandidates(state, forms, roll.dexId).length > 0) chances++;
+      const copy = { source: 'track', dexId: roll.dexId, tier: roll.tier, shiny: roll.shiny };
+      if (roll.form !== BASE) copy.form = roll.form;
+      if (roll.bonusForm) {
+        bonuses++;
+        assert.ok(repeat, 'never with a first copy');
+        assert.ok(!isCollector(forms, roll.dexId), 'never Zygarde');
+        assert.equal(findForm(forms, roll.dexId, roll.bonusForm).kind, 'upgrade');
+        assert.ok(!unlockedForms(state, forms, roll.dexId).has(roll.bonusForm), 'never a form already held');
+        state.unlocks.push({ dexId: roll.dexId, form: roll.bonusForm, source: 'bonus', cost: 0 });
+      }
+      state.pokemon.push(copy);
+    }
+  }
+  assert.ok(chances > 300, `${chances} chances`);
+  assert.ok(Math.abs(bonuses / chances - 1 / 12) < 0.035, `${bonuses} bonuses in ${chances} chances`);
 });

@@ -6,7 +6,7 @@
  *   3. Fusions.
  *   4. Upgrade forms (Mega, Gigantamax ...) for Pokémon you hold.
  *   5. Copies of Pokémon you have found, nearest to their shiny first.
- *   6. Recent purchases.
+ *   6. Recent activity: purchases, bonus forms, coins granted.
  *
  * Buying always goes through a confirmation dialog (see the shop actions in
  * app.js). The rules themselves live in js/shop.js.
@@ -14,7 +14,7 @@
 
 import { h, sprite, fmtDateTime, fmtNumber } from '../dom.js';
 import { coins } from '../pixelart.js';
-import { TIERS, countOwned, collection } from '../rewards.js';
+import { TIERS, countOwned } from '../rewards.js';
 import { formsOf, findForm, displayName, formLabel } from '../forms.js';
 import { resolveMon } from '../mon.js';
 import {
@@ -28,6 +28,7 @@ import {
   unlockedForms,
   copyOffer,
   upgradeOffer,
+  activity,
 } from '../shop.js';
 import { buyButton, fusionCard } from './cards.js';
 
@@ -39,7 +40,7 @@ const shown = { upgrades: PAGE, copies: PAGE };
 
 export function render(ctx, root) {
   const { state, dex, forms } = ctx;
-  const counts = countOwned(collection(state));
+  const counts = countOwned(state.pokemon);
   const found = dex.species.filter((s) => (counts.get(s.id) || 0) > 0);
   const owned = balance(state);
 
@@ -82,7 +83,7 @@ function collectorPanel(ctx, species) {
       if (has) right = h('span', { class: 'label' }, 'UNLOCKED');
       else if (form.kind === 'milestone') right = h('span', { class: 'label muted' }, `AT ${COLLECTOR.milestones[form.key]} COPIES`);
       else right = buyButton({ label: 'UNLOCK', offer: upgradeOffer(state, forms, species, form), onBuy: () => ctx.buyUpgrade(species, form) });
-      return h('div', { class: 'form-row' }, h('span', { class: 'form-pick' }, form.label), right);
+      return h('div', { class: 'form-row' }, h('span', {}, form.label), right);
     });
 
   return h('section', { class: 'box pad stack', 'aria-label': species.name },
@@ -188,11 +189,11 @@ function copySection(ctx, found, counts) {
       : [grid, h('div', { class: 'center' }, more)]);
 }
 
-/** The last few entries of the ledger, newest first. */
+/** The last few things that happened to the coins, newest first. */
 function recentSection(ctx) {
   const { state, dex, forms } = ctx;
-  const ledger = (state.shop && state.shop.ledger) || [];
-  if (ledger.length === 0) return null;
+  const recent = activity(state).slice(0, 8);
+  if (recent.length === 0) return null;
   const line = (entry) => {
     if (entry.type === 'grant') return `GRANTED ${fmtNumber(entry.coins)} COINS`;
     if (entry.type === 'fuse' || entry.type === 'unfuse') {
@@ -201,19 +202,20 @@ function recentSection(ctx) {
     }
     const species = dex.byId.get(entry.dexId);
     const name = species ? species.name : `#${entry.dexId}`;
-    if (entry.type === 'upgrade') {
+    if (entry.type === 'upgrade' || entry.type === 'bonus') {
       const form = findForm(forms, entry.dexId, entry.form);
-      return `UNLOCKED ${form && species ? displayName(name, form) : `${name} ${entry.form}`}`;
+      const full = form && species ? displayName(name, form) : `${name} ${entry.form}`;
+      return entry.type === 'bonus' ? `BONUS FORM: ${full}` : `UNLOCKED ${full}`;
     }
     const form = entry.form ? ` (${formLabel(forms, entry.dexId, entry.form)})` : '';
     return `BOUGHT ${name}${form}${entry.shiny ? ' · SHINY' : ''}`;
   };
-  return h('section', { class: 'box pad stack', 'aria-label': 'Recent purchases' },
+  return h('section', { class: 'box pad stack', 'aria-label': 'Recent activity' },
     h('h2', {}, 'RECENT'),
     h('ol', { class: 'ledger' },
-      ledger.slice(-8).reverse().map((entry) =>
+      recent.map((entry) =>
         h('li', {},
           h('span', {}, line(entry)),
           h('span', { class: 'label muted' }, fmtDateTime(entry.at)),
-          entry.cost > 0 ? coins(entry.cost) : h('span', { class: 'label muted' }, 'FREE')))));
+          entry.cost > 0 ? coins(entry.cost) : h('span', { class: 'label muted' }, entry.type === 'grant' ? '' : 'FREE')))));
 }

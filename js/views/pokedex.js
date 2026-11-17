@@ -5,19 +5,21 @@
  *     and time spent (plain clock time, no multiplier or rating applied).
  *   - A three-way switch: ALL POKéMON, SHINIES, FUSED.
  *   - ALL POKéMON: search, tier filters, and a grid of every species by
- *     number. Unfound species are silhouettes with only their number.
- *   - SHINIES: just the shiny Pokémon you hold.
+ *     number. Unfound species are silhouettes with only their number. Every
+ *     Pokémon is drawn in its normal colours here; one whose shiny you hold
+ *     has a gold border and a sparkle.
+ *   - SHINIES: just the shiny Pokémon you hold, in their shiny colours.
  *   - FUSED: the fusions, made or not.
  *
- * Tapping a Pokémon opens its entry: every form it has (Base, Alolan, Mega
- * ...), which are unlocked, what the others need, and buttons to buy a copy,
- * unlock an upgrade, or set the form on show as the buddy.
+ * Tapping a Pokémon opens its entry (see openDetail): a full page with a
+ * BACK button. It is a dialog in code, not a route, so it has no address of
+ * its own and the Pokédex underneath keeps its place.
  */
 
 import { h, sprite, fmtDateTime, fmtDate, fmtNumber } from '../dom.js';
 import { icon } from '../pixelart.js';
-import { TIERS, countOwned, collection } from '../rewards.js';
-import { BASE, formsOf, variantsOf, formLabel } from '../forms.js';
+import { TIERS, countOwned } from '../rewards.js';
+import { BASE, formsOf, variantsOf, formLabel, findForm, displayName } from '../forms.js';
 import { resolveMon } from '../mon.js';
 import {
   COLLECTOR,
@@ -30,6 +32,7 @@ import {
   upgradeOffer,
   activeFusions,
 } from '../shop.js';
+import { coins } from '../pixelart.js';
 import { buyButton, fusionCard } from './cards.js';
 
 const FILTERS = [
@@ -55,7 +58,7 @@ function fmtTotal(minutes) {
 
 export function render(ctx, root) {
   const { state, dex } = ctx;
-  const copies = collection(state);
+  const copies = state.pokemon;
   const counts = countOwned(copies);
   const shinyCopies = copies.filter((r) => r.shiny);
   const shinyAt = new Map(shinyCopies.map((r) => [r.dexId, r.at]));
@@ -70,10 +73,12 @@ export function render(ctx, root) {
     const el = h('button', {
       class: `cell tier-${species.tier}${owned ? ' owned' : ''}${shiny ? ' shiny' : ''}`,
       type: 'button',
-      'aria-label': owned ? `${species.name}, ${count} copies${shiny ? ', shiny' : ''}` : `Number ${species.id}, not found yet`,
+      'aria-label': owned ? `${species.name}, ${count} copies${shiny ? ', shiny held' : ''}` : `Number ${species.id}, not found yet`,
       onclick: () => openDetail(ctx, species),
     },
-      sprite(species, { shiny, silhouette: !owned }),
+      // Always the normal colours here. The gold border and the sparkle say
+      // the shiny is held; the SHINIES tab shows what it looks like.
+      sprite(species, { silhouette: !owned }),
       owned ? h('span', { class: 'cell-count' }, count <= cap ? `${count}/${cap}` : `${count}`) : null,
       shiny ? h('span', { class: 'cell-shiny' }, icon('sparkle', { scale: 2 })) : null,
       h('span', { class: 'cell-no' }, dexNo(species.id)),
@@ -210,133 +215,251 @@ export function render(ctx, root) {
   apply();
 }
 
+/** Copies and unlocks listed in an entry's history before "SHOW ALL". */
+const HISTORY_PAGE = 12;
+
 /**
- * One Pokémon's entry. The picture shows whichever form is selected in the
- * list below it; the buddy button sets exactly what is on show.
+ * One Pokémon's entry, as a full page.
+ *
+ *   BACK, number, tier
+ *   the Pokémon:  a large picture of the form on show, its name, a switch
+ *                 between normal and shiny (once the shiny is held), and the
+ *                 buddy button, which sets exactly what is on show
+ *   facts:        copies, spare copies, shiny, generation
+ *   forms:        one tile per form, with its picture. An unlocked form can
+ *                 be put on show; a locked one says what it needs, or
+ *                 offers to unlock it
+ *   another copy: the price, or why it cannot be bought
+ *   history:      every copy and every form unlocked, newest first
+ *
+ * It is opened as a full-page dialog (ctx.openModal with `page`), and is
+ * redrawn in place whenever the state changes, for example after buying a
+ * copy from it.
  */
 function openDetail(ctx, species) {
-  const { state, forms } = ctx;
   ctx.sfx.play('click');
-  const copies = copiesOf(state, species.id);
-  const owned = copies.length > 0;
-  const shinyHeld = hasShiny(state, species.id);
+  const { forms } = ctx;
+  const extra = formsOf(forms, species.id);
   const cap = TIERS[species.tier].cap;
   const collector = isCollector(forms, species.id);
-  const unlocked = unlockedForms(state, forms, species.id);
-  const extra = formsOf(forms, species.id);
-  const fused = fusedCopies(state, forms, species.id);
 
-  // Open on the buddy's form when this Pokémon is the buddy, else on Base.
-  const buddyHere = state.buddy && state.buddy.dexId === species.id;
-  let selected = buddyHere && state.buddy.form && unlocked.has(state.buddy.form) ? state.buddy.form : BASE;
-  let showShiny = buddyHere ? Boolean(state.buddy.shiny) && shinyHeld : shinyHeld;
+  // What is on show. Kept while the entry is open, across redraws.
+  // Opens on the buddy's form when this Pokémon is the buddy, else on Base
+  // and in normal colours.
+  const buddy = ctx.state.buddy;
+  const buddyHere = Boolean(buddy && buddy.dexId === species.id);
+  let selected = buddyHere && buddy.form ? buddy.form : BASE;
+  let showShiny = buddyHere && Boolean(buddy.shiny);
+  let showAll = false;
 
-  const art = h('div', { class: 'detail-art' });
-  const title = h('h2', { class: 'center' });
-  const toggle = shinyHeld ? h('button', { class: 'btn btn-small', type: 'button' }, '') : null;
-  const buddyButton = h('button', { class: 'btn btn-primary', type: 'button' }, 'SET AS BUDDY');
-  const rows = h('div', { class: 'form-rows' });
+  const root = h('div', { class: 'stack' });
 
-  /** What the right-hand side of a form's row says or offers. */
-  function status(form) {
-    if (!form) return h('span', { class: 'label' }, owned ? 'UNLOCKED' : 'NOT FOUND YET');
-    if (unlocked.has(form.key)) return h('span', { class: 'label' }, 'UNLOCKED');
-    if (form.kind === 'upgrade') {
-      const offer = upgradeOffer(state, forms, species, form);
-      return buyButton({ label: 'UNLOCK', offer, onBuy: () => ctx.buyUpgrade(species, form) });
-    }
-    if (form.kind === 'milestone') {
-      const needed = COLLECTOR.milestones[form.key];
-      return h('span', { class: 'label muted' }, needed ? `AT ${needed} COPIES (${copies.length}/${needed})` : 'LOCKED');
-    }
-    if (form.sprite === false) return h('span', { class: 'label muted' }, 'ART NOT AVAILABLE YET');
-    if (!owned) return h('span', { class: 'label muted' }, 'NOT FOUND YET');
-    // Alternate forms arrive one per copy, in order: say which is next.
-    const held = new Set(copies.map((c) => c.form || BASE));
-    const next = variantsOf(forms, species.id).find((v) => !held.has(v.key));
-    return h('span', { class: 'label muted' }, next && next.key === form.key ? 'WITH YOUR NEXT COPY' : 'WITH A LATER COPY');
-  }
+  function build() {
+    const { state } = ctx;
+    const copies = copiesOf(state, species.id);
+    const owned = copies.length > 0;
+    const shinyHeld = hasShiny(state, species.id);
+    const unlocked = unlockedForms(state, forms, species.id);
+    const fused = fusedCopies(state, forms, species.id);
+    if (!unlocked.has(selected)) selected = BASE;
+    if (!shinyHeld) showShiny = false;
 
-  function paint() {
     const mon = resolveMon(ctx, { dexId: species.id, form: selected });
-    art.replaceChildren(sprite(mon, { shiny: showShiny, scale: 2, silhouette: !owned, eager: true }));
-    title.replaceChildren(h('span', {}, owned ? mon.name : '?????'));
-    if (toggle) toggle.textContent = showShiny ? 'SHOW NORMAL' : 'SHOW SHINY';
     const b = state.buddy;
     const isBuddy = Boolean(b && b.dexId === species.id && (b.form || BASE) === selected && Boolean(b.shiny) === showShiny);
-    buddyButton.textContent = isBuddy ? 'YOUR BUDDY' : 'SET AS BUDDY';
-    buddyButton.disabled = isBuddy;
+    const redraw = () => {
+      ctx.sfx.play('click');
+      build();
+    };
 
-    rows.replaceChildren(...[null, ...extra].map((form) => {
+    // ---- the Pokémon on show
+    const hero = h('section', { class: `box entry-hero tier-${species.tier}${owned ? ' owned' : ''}`, 'aria-label': 'On show' },
+      h('div', { class: `entry-art${showShiny ? ' shiny' : ''}` },
+        sprite(mon, { shiny: showShiny, scale: 2, silhouette: !owned, eager: true }),
+        showShiny ? h('span', { class: 'cell-shiny' }, icon('sparkle', { scale: 3 })) : null),
+      h('div', { class: 'entry-id stack tight' },
+        h('h1', { class: 'entry-name' }, owned ? mon.name : '?????'),
+        owned
+          ? h('div', { class: 'label muted' }, [
+              selected === BASE ? (extra.length > 0 ? 'BASE FORM' : null) : `${formLabel(forms, species.id, selected)} FORM`,
+              showShiny ? 'SHINY' : null,
+            ].filter(Boolean).join(' · '))
+          : h('p', { class: 'muted' }, 'NOT FOUND YET. KEEP EARNING POINTS.'),
+        shinyHeld
+          ? h('div', { class: 'segmented entry-switch', role: 'group', 'aria-label': 'Colours' },
+              [[false, 'NORMAL'], [true, 'SHINY']].map(([value, text]) =>
+                h('button', {
+                  class: `segment${showShiny === value ? ' selected' : ''}`,
+                  type: 'button',
+                  'aria-pressed': String(showShiny === value),
+                  onclick: () => {
+                    showShiny = value;
+                    redraw();
+                  },
+                }, text)))
+          : null,
+        owned
+          ? h('button', {
+              class: 'btn btn-primary',
+              type: 'button',
+              disabled: isBuddy,
+              onclick: () => {
+                ctx.setBuddy({ dexId: species.id, form: selected, shiny: showShiny });
+                ctx.render();
+              },
+            }, isBuddy ? 'YOUR BUDDY' : 'SET AS BUDDY')
+          : null));
+
+    // ---- facts
+    const limit = collector ? COLLECTOR.maxCopies : cap;
+    const fact = (label, value, note) =>
+      h('div', { class: 'box fact' },
+        h('span', { class: 'label muted' }, label),
+        h('span', { class: 'fact-value' }, value),
+        note ? h('span', { class: 'label muted' }, note) : null);
+    const facts = owned
+      ? h('section', { class: 'entry-facts', 'aria-label': 'Facts' },
+          fact('COPIES', copies.length <= limit ? `${copies.length}/${limit}` : String(copies.length), copies.length > limit ? `SET OF ${limit} COMPLETE` : null),
+          fact('SPARE', String(copies.length - fused), fused > 0 ? `${fused} IN FUSIONS` : null),
+          fact('SHINY', shinyHeld ? 'YES' : 'NO', shinyHeld ? null : `ON COPY ${cap}`),
+          fact('GENERATION', String(species.gen)))
+      : null;
+
+    // ---- forms
+    const held = new Set(copies.map((c) => c.form || BASE));
+    const nextVariant = variantsOf(forms, species.id).find((v) => !held.has(v.key));
+    /** What a locked form's tile says or offers. */
+    function locked(form) {
+      if (form.kind === 'upgrade') {
+        return buyButton({ label: 'UNLOCK', offer: upgradeOffer(state, forms, species, form), onBuy: () => ctx.buyUpgrade(species, form) });
+      }
+      let text;
+      if (form.kind === 'milestone') {
+        const needed = COLLECTOR.milestones[form.key];
+        text = needed ? `AT ${needed} COPIES (${copies.length}/${needed})` : 'LOCKED';
+      } else if (form.sprite === false) text = 'ART NOT AVAILABLE YET';
+      else if (!owned) text = 'NOT FOUND YET';
+      // Alternate forms arrive one per copy, in order: say which is next.
+      else text = nextVariant && nextVariant.key === form.key ? 'WITH YOUR NEXT COPY' : 'WITH A LATER COPY';
+      return h('span', { class: 'label muted' }, text);
+    }
+    const formTile = (form) => {
       const key = form ? form.key : BASE;
       const open = owned && unlocked.has(key);
-      return h('div', { class: `form-row${key === selected ? ' selected' : ''}` },
+      const on = open && key === selected;
+      const picture = resolveMon(ctx, { dexId: species.id, form: key });
+      return h('div', { class: `box form-tile${open ? ' open' : ''}${on ? ' selected' : ''}` },
         h('button', {
           class: 'form-pick',
           type: 'button',
           disabled: !open,
-          'aria-pressed': String(key === selected),
+          'aria-pressed': String(on),
+          'aria-label': `${formLabel(forms, species.id, key)}${open ? '' : ', locked'}`,
           onclick: () => {
             selected = key;
-            ctx.sfx.play('click');
-            paint();
+            redraw();
           },
-        }, formLabel(forms, species.id, key)),
-        status(form));
-    }));
-  }
-  if (toggle) {
-    toggle.addEventListener('click', () => {
-      showShiny = !showShiny;
-      paint();
-    });
-  }
-  buddyButton.addEventListener('click', () => {
-    ctx.setBuddy({ dexId: species.id, form: selected, shiny: showShiny });
-    paint();
-  });
-  paint();
+        },
+          sprite(picture, { shiny: open && showShiny, silhouette: !open }),
+          h('span', { class: 'form-name' }, formLabel(forms, species.id, key))),
+        open
+          ? h('span', { class: `label${on ? '' : ' muted'}` }, on ? 'ON SHOW' : 'UNLOCKED')
+          : form ? locked(form) : h('span', { class: 'label muted' }, 'NOT FOUND YET'));
+    };
+    const total = extra.length + 1;
+    const formsSection = extra.length > 0
+      ? h('section', { class: 'stack tight', 'aria-label': 'Forms' },
+          h('div', { class: 'row between' },
+            h('h2', {}, 'FORMS'),
+            h('span', { class: 'label muted' }, `${unlocked.size}/${total} UNLOCKED`)),
+          h('div', { class: 'form-grid' }, [null, ...extra].map(formTile)))
+      : null;
 
-  const offer = copyOffer(state, forms, species);
-  const limit = collector ? COLLECTOR.maxCopies : cap;
+    // ---- another copy
+    const copyRow = owned
+      ? h('section', { class: 'box pad row between wrap', 'aria-label': 'Another copy' },
+          h('div', { class: 'stack tight' },
+            h('h2', {}, 'ANOTHER COPY'),
+            h('span', { class: 'label muted' },
+              collector ? `EVERY COPY COUNTS TOWARDS ${species.name}'S FORMS`
+                : shinyHeld ? 'EXTRA COPIES ARE SPARES FOR FUSIONS AND FORMS'
+                  : copies.length + 1 === cap ? 'THE NEXT COPY IS THE SHINY ONE'
+                    : `THE SHINY IS COPY ${cap}`)),
+          buyButton({ label: 'BUY', offer: copyOffer(state, forms, species), onBuy: () => ctx.buyCopy(species) }))
+      : null;
 
-  ctx.openModal(
-    h('div', { class: 'stack' },
-      h('div', { class: 'row between' },
-        h('span', { class: 'label muted' }, dexNo(species.id)),
+    // ---- history: copies and unlocked forms, newest first
+    const events = [];
+    copies.forEach((copy, i) => events.push({ at: copy.at, order: events.length, copy, number: i + 1 }));
+    for (const entry of state.unlocks || []) {
+      if (entry.dexId === species.id) events.push({ at: entry.at, order: events.length, unlock: entry });
+    }
+    events.sort((x, y) => Date.parse(y.at) - Date.parse(x.at) || y.order - x.order);
+    const eventRow = ({ copy, number, unlock, at }) => {
+      if (unlock) {
+        const form = findForm(forms, species.id, unlock.form);
+        return h('li', { class: 'history-row' },
+          h('span', { class: 'history-what' }, `FORM: ${form ? displayName(species.name, form) : unlock.form}`),
+          h('span', { class: 'label muted' }, [
+            fmtDateTime(at),
+            unlock.source === 'bonus' ? 'BONUS WITH A REWARD' : unlock.source === 'gift' ? 'GIFT' : 'UNLOCKED IN THE SHOP',
+          ].join(' · ')),
+          unlock.cost > 0 ? coins(unlock.cost) : null);
+      }
+      const where =
+        copy.source === 'starter' ? 'STARTER'
+          : copy.source === 'shop' ? 'BOUGHT IN THE SHOP'
+            : copy.source === 'gift' ? 'GIFT'
+              : `REWARD AT ${fmtNumber(copy.trackPoints)} PTS`;
+      return h('li', { class: `history-row${copy.shiny ? ' shiny' : ''}` },
+        h('span', { class: 'history-what' }, [
+          `COPY ${number}`,
+          copy.form && copy.form !== BASE ? formLabel(forms, species.id, copy.form) : null,
+          copy.shiny ? 'SHINY' : null,
+          copy.pity ? 'PITY' : null,
+        ].filter(Boolean).join(' · ')),
+        h('span', { class: 'label muted' }, `${fmtDateTime(at)} · ${where}`),
+        copy.source === 'shop' && copy.cost > 0 ? coins(copy.cost) : null);
+    };
+    const shownEvents = showAll ? events : events.slice(0, HISTORY_PAGE);
+    const history = owned
+      ? h('section', { class: 'stack tight', 'aria-label': 'History' },
+          h('div', { class: 'row between' },
+            h('h2', {}, 'HISTORY'),
+            h('span', { class: 'label muted' }, 'NEWEST FIRST')),
+          h('ol', { class: 'box history-rows' }, shownEvents.map(eventRow)),
+          events.length > shownEvents.length
+            ? h('div', { class: 'center' },
+                h('button', {
+                  class: 'btn',
+                  type: 'button',
+                  onclick: () => {
+                    showAll = true;
+                    redraw();
+                  },
+                }, `SHOW ALL ${events.length}`))
+            : null)
+      : null;
+
+    root.replaceChildren(...[
+      h('div', { class: 'page-head' },
+        h('button', { class: 'btn btn-small', type: 'button', onclick: () => ctx.closeModal() }, '◀ BACK'),
+        h('span', { class: 'entry-no' }, dexNo(species.id)),
+        h('span', { class: 'grow' }),
         owned ? h('span', { class: `badge badge-${species.tier}` }, TIERS[species.tier].label.toUpperCase()) : null),
-      art,
-      title,
-      extra.length > 0 || owned
-        ? h('div', { class: 'stack tight' },
-            extra.length > 0 ? h('div', { class: 'label muted' }, 'FORMS') : null,
-            extra.length > 0 ? rows : null)
-        : null,
-      owned
-        ? [
-            h('dl', { class: 'facts' },
-              h('dt', {}, 'COPIES'), h('dd', {}, copies.length <= limit ? `${copies.length} OF ${limit}` : `${copies.length} (SET OF ${limit} COMPLETE)`),
-              fused > 0 ? [h('dt', {}, 'IN FUSIONS'), h('dd', {}, `${fused} (${copies.length - fused} SPARE)`)] : null,
-              h('dt', {}, 'GENERATION'), h('dd', {}, String(species.gen)),
-              h('dt', {}, 'SHINY'), h('dd', {}, shinyHeld ? 'YES' : `ON COPY ${cap}`)),
-            h('div', { class: 'row between wrap' },
-              h('span', { class: 'label' }, 'ANOTHER COPY'),
-              buyButton({ label: 'BUY', offer, onBuy: () => ctx.buyCopy(species) })),
-            h('ol', { class: 'copies' },
-              copies.map((r) => h('li', {},
-                [
-                  fmtDateTime(r.at),
-                  r.starter ? 'STARTER' : r.bought ? 'BOUGHT' : `${fmtNumber(r.trackPoints)} PTS`,
-                  r.form && r.form !== BASE ? formLabel(forms, species.id, r.form) : null,
-                  r.shiny ? 'SHINY' : null,
-                  r.pity ? 'PITY' : null,
-                ].filter(Boolean).join(' · ')))),
-          ]
-        : h('p', { class: 'muted center' }, 'NOT FOUND YET. KEEP EARNING POINTS.'),
-      h('div', { class: 'row end wrap' },
-        toggle,
-        owned ? buddyButton : null,
-        h('button', { class: 'btn', type: 'button', autofocus: true, onclick: () => { ctx.closeModal(); ctx.render(); } }, 'CLOSE'))),
-    { label: owned ? species.name : `Pokémon number ${species.id}`, kind: 'modal-small' },
-  );
+      hero,
+      facts,
+      formsSection,
+      copyRow,
+      history,
+    ].filter(Boolean));
+  }
+
+  build();
+  const owned = copiesOf(ctx.state, species.id).length > 0;
+  ctx.openModal(root, {
+    page: true,
+    label: owned ? species.name : `Pokémon number ${species.id}`,
+    refresh: build,
+  });
 }

@@ -12,7 +12,7 @@ repository:
 | `data/forms.json` | Every alternate form and fusion: which species, what kind, its label, what it requires, sprite flags |
 | `assets/sprites/normal/{id}.png` | Normal sprite, 96×96. Species use their Pokédex number; alternate forms use PokeAPI's number for the form (10001 and up) |
 | `assets/sprites/shiny/{id}.png` | Shiny sprite, 96×96 |
-| `assets/icons/snorlax.png`, `zacian-crowned.png` | The two dashboard buttons |
+| `assets/icons/snorlax-gmax.png`, `zacian-crowned.png` | The two dashboard buttons, and the tab icon while a stopwatch runs |
 
 The updater regenerates these from [PokeAPI](https://pokeapi.co) and its
 sprite repository.

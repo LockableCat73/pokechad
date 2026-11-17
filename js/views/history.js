@@ -5,7 +5,6 @@
 
 import { h, sprite, fmtDateTime, fmtMinutes, fmtPoints, fmtNumber } from '../dom.js';
 import { starRow } from '../pixelart.js';
-import { collection } from '../rewards.js';
 import { resolveMon } from '../mon.js';
 
 const PAGE = 50;
@@ -16,7 +15,7 @@ export function render(ctx, root) {
   const { state, dex } = ctx;
 
   const rewardsBySession = new Map();
-  for (const reward of collection(state)) {
+  for (const reward of state.pokemon) {
     if (!reward.sessionId) continue;
     if (!rewardsBySession.has(reward.sessionId)) rewardsBySession.set(reward.sessionId, []);
     rewardsBySession.get(reward.sessionId).push(reward);
@@ -54,7 +53,7 @@ export function render(ctx, root) {
               const species = resolveMon(ctx, reward);
               return h('span', { class: `earned-item${reward.shiny ? ' shiny' : ''}` },
                 sprite(species, { shiny: reward.shiny }),
-                h('span', { class: 'label' }, `${species ? species.name : `#${reward.dexId}`}${reward.shiny ? ' (SHINY)' : ''}${reward.starter ? ' (STARTER)' : ''}`));
+                h('span', { class: 'label' }, `${species ? species.name : `#${reward.dexId}`}${reward.shiny ? ' (SHINY)' : ''}${reward.source === 'starter' ? ' (STARTER)' : ''}`));
             }))
         : null);
   }

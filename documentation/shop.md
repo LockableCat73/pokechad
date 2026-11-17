@@ -1,6 +1,8 @@
 # Pokécoins, the shop and alternate forms
 
-Code: [`js/shop.js`](../js/shop.js) (coins, purchases, fusions, Zygarde),
+Code: [`js/shop.js`](../js/shop.js) (prices, purchases, fusions, Zygarde),
+[`js/holdings.js`](../js/holdings.js) (reading the save: copies, unlocked
+forms, fusions, coins),
 [`js/forms.js`](../js/forms.js) (form data and form order),
 [`js/mon.js`](../js/mon.js) (turning a form or fusion into a sprite),
 [`js/views/shop.js`](../js/views/shop.js) and
@@ -12,18 +14,24 @@ Data: [`data/forms.json`](../data/forms.json), written by the updater from
 
 - **1 coin for every reward on the track**: each 100-point reward, and the
   starter.
-- Coins are not stored. `balance = coinsEarned − coinsSpent`, where earned is
-  the number of rewards (plus one for the starter) and spent is the sum of
-  the costs in the shop ledger. A save from before the shop existed therefore
-  starts with one coin per reward it already holds.
+- The balance is worked out, never typed in: `balance = earned − spent`.
+  - **Earned:** 1 per copy with `"source": "track"`, 1 for the starter, plus
+    anything in `grants`.
+  - **Spent:** the `cost` of every bought copy, every bought form and every
+    fusion made, including fusions since undone.
+  The save carries the three numbers as `wallet` so they can be read in the
+  file, but they are recalculated on every load and every write.
 - Buying things never earns coins and never moves the track or the luck
-  gauge.
-- A ledger entry of type `grant` adds coins. The site never writes one; it is
-  for test saves and hand-edited files.
+  gauge. A bought copy has `"source": "shop"`, so it is not a station.
+- An entry in `grants` adds coins. The site never writes one; it is for test
+  saves and hand-edited files.
 
 **Test saves.** Two files for trying the shop, loaded from Backup → Load
-JSON. Both leave Charmander out, carry a grant that brings the balance to
-exactly 1,000,000, and have no history.
+JSON. Both leave Charmander out, hold exactly 1,000,000 Pokécoins through one
+grant, and have no history. Every Pokémon in them is a **gift**
+(`"source": "gift"`): held, but not earned on the track, so the track stays
+at START with nothing claimed and the first reward you earn is reward
+number 1.
 
 | File | Holds |
 |---|---|
@@ -86,10 +94,10 @@ it was rolled or bought:
 Rotom: Base, then Heat, Wash, Frost, Fan, Mow on copies 2 to 6, then random.
 
 A form is unlocked once a copy has arrived in it. Each copy records its form
-(`form` on the reward or ledger entry; absent means Base), and the encounter,
-the track and History show that form.
+(`form` on the copy; absent means Base), and the encounter, the track and
+History show that form.
 
-### Paid forms (`upgrade`): 150 coins each
+### Paid forms (`upgrade`): 150 coins each, or a lucky reward
 
 Mega, Mega X / Y / Z, Gigantamax, Primal, Crowned, School, Hero, Unbound,
 Ultra, Eternamax, Ash, Terastal, Stellar, Blade, Zen, Pirouette.
@@ -99,7 +107,13 @@ Ultra, Eternamax, Ash, Terastal, Stellar, Blade, Zen, Pirouette.
 - Needs at least one copy of the Pokémon.
 - Bought once per form; it then belongs to that Pokémon for good. Several can
   be bought for one Pokémon (Charizard: Mega X, Mega Y, Gigantamax).
-- Some need something else first, recorded as `requires` in the data:
+- Each unlocked form is one entry in `state.unlocks`.
+- **Or free, by luck:** a reward on the track for a Pokémon you already hold
+  has a 1-in-12 chance of unlocking one of these forms at no cost. Bought
+  copies never do, and Zygarde is left out. See
+  [rewards.md](rewards.md#bonus-forms).
+- Some need something else first, recorded as `requires` in the data
+  (`formNeeds()`); a bonus respects these too:
   - `{ "form": "galar-standard" }`: an alternate form must be unlocked
     first. Galarian Zen needs Galarian Darmanitan; Rapid Strike Gigantamax
     needs Rapid Strike Urshifu.
@@ -169,22 +183,22 @@ save holds `{ dexId, shiny, form? }` or `{ fusion, shiny }`. If a save points
 at a form you do not have, the plain Pokémon is shown instead
 (`currentBuddy()` in `js/mon.js`).
 
-## The ledger
+## What a purchase writes
 
-Every purchase is one entry in `state.shop.ledger`, and nothing else about
-the shop is stored:
+Each kind of purchase changes the save in one place:
 
-```json
-{ "type": "copy",    "dexId": 479, "tier": "common", "form": "wash", "shiny": false, "cost": 5,   "at": "…" }
-{ "type": "upgrade", "dexId": 6,   "form": "mega-x",                                 "cost": 150, "at": "…" }
-{ "type": "fuse",    "fusion": 643646000,                                           "cost": 150, "at": "…" }
-{ "type": "unfuse",  "fusion": 643646000,                                           "cost": 0,   "at": "…" }
-```
+| Purchase | What is written |
+|---|---|
+| A copy | A copy in `pokemon`: `{ "source": "shop", "dexId": 479, "tier": "common", "form": "wash", "shiny": false, "cost": 5, "at": "…" }` |
+| An upgrade form | An entry in `unlocks`: `{ "dexId": 6, "form": "mega-x", "source": "shop", "cost": 150, "at": "…" }` |
+| A fusion | An entry in `fusions`: `{ "fusion": 643646000, "cost": 150, "at": "…", "undoneAt": null }` |
+| Unfusing | `undoneAt` is set on that fusion's entry. The entry and its cost stay, which is how "no refund" is recorded. |
 
-The balance, the bought copies, the unlocked upgrades and the active fusions
-are all worked out from it (`balance()`, `boughtCopies()` in `rewards.js`,
-`unlockedForms()`, `activeFusions()`). See
-[storage.json.md](storage.json.md#shop) for editing it by hand.
+Everything else is read from those lists by `holdings.js`: `balance()`,
+`copiesOf()`, `unlockedForms()`, `activeFusions()`. The Shop's "Recent" list
+comes from `activity()`, which gathers bought copies, unlocked forms (bought
+or bonus), fusions made and undone, and grants, newest first. See
+[storage.json.md](storage.json.md) for editing the save by hand.
 
 ## What updates itself and what does not
 

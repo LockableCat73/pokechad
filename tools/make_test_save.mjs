@@ -5,10 +5,15 @@
  *   tests/all-pokemon-x10-save.json  10 copies of every Pokémon
  *
  * Both leave Charmander out (so the starter choice can still complete the
- * Pokédex), hold exactly 1,000,000 Pokécoins through a "grant" entry in the
- * shop ledger, and have no sessions, starter or buddy.
+ * Pokédex), hold exactly 1,000,000 Pokécoins, and have no sessions, starter
+ * or buddy.
  *
- * Copies follow the game's own rules, so the files look like real play:
+ * Every copy is a gift (`"source": "gift"`): it is held, but it was not
+ * earned on the reward track, so the track stays at START with nothing
+ * claimed and the first real reward is still reward number 1. The coins are
+ * one entry in `grants`.
+ *
+ * Copies otherwise follow the game's own rules:
  *   - form: the first copy is Base, then one new alternate form per copy in
  *     Pokédex order; once every form is held the rest are Base (the game
  *     would pick at random there, but a fixed choice keeps the file stable);
@@ -25,7 +30,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { defaultState, normalize } from '../js/state.js';
-import { balance } from '../js/shop.js';
+import { balance, trackCopies } from '../js/shop.js';
 import { TIERS } from '../js/rewards.js';
 import { BASE, indexForms, nextForm } from '../js/forms.js';
 
@@ -46,25 +51,26 @@ function write(file, copies) {
     for (let n = 1; n <= copies; n++) {
       const form = nextForm(forms, species.id, held, () => 0); // 0 picks Base once all are held
       held.push(form);
-      const reward = { dexId: species.id, tier: species.tier, shiny: n === TIERS[species.tier].cap, pity: false, at: AT, sessionId: null };
-      if (form !== BASE) reward.form = form;
-      state.rewards.push(reward);
+      const copy = { source: 'gift', dexId: species.id, tier: species.tier, shiny: n === TIERS[species.tier].cap, at: AT };
+      if (form !== BASE) copy.form = form;
+      state.pokemon.push(copy);
     }
   }
-  // Each reward is already worth one coin; the grant makes up the rest.
-  state.shop.ledger = [{ type: 'grant', coins: COINS - state.rewards.length, at: AT }];
+  // Gifts earn no coins, so the grant is the whole balance.
+  state.grants = [{ coins: COINS, at: AT }];
 
   const save = normalize(state);
   if (balance(save) !== COINS) throw new Error(`balance is ${balance(save)}, expected ${COINS}`);
+  if (trackCopies(save).length !== 0) throw new Error('a test save must not claim any station on the track');
 
-  // One reward per line keeps the file readable and the diff small.
-  const { rewards, ...rest } = save;
-  const head = JSON.stringify({ ...rest, rewards: [] }, null, 2);
-  const lines = rewards.map((r) => `    ${JSON.stringify(r)}`).join(',\n');
-  const text = head.replace('"rewards": []', `"rewards": [\n${lines}\n  ]`) + '\n';
+  // One copy per line keeps the file readable and the diff small.
+  const { pokemon, ...rest } = save;
+  const head = JSON.stringify({ ...rest, pokemon: [] }, null, 2);
+  const lines = pokemon.map((copy) => `    ${JSON.stringify(copy)}`).join(',\n');
+  const text = head.replace('"pokemon": []', `"pokemon": [\n${lines}\n  ]`) + '\n';
   JSON.parse(text);
   writeFileSync(new URL(`tests/${file}`, root), text);
-  console.log(`Wrote tests/${file}: ${rewards.length} copies, ${COINS.toLocaleString('en-US')} Pokécoins.`);
+  console.log(`Wrote tests/${file}: ${pokemon.length} copies, ${COINS.toLocaleString('en-US')} Pokécoins.`);
 }
 
 write('all-pokemon-save.json', 1);

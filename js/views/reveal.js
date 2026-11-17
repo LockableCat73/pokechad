@@ -16,14 +16,14 @@
  * Animations use stepped timing so motion stays pixel-like, and the throw is
  * skipped for people who ask their system for reduced motion.
  *
- * Only a reward rolled on the track gets steps 1 and 2. Anything the player
- * chose or paid for goes straight to step 3: the starter, a copy bought in
- * the shop, a form that has just been unlocked, and a fusion.
+ * Only a reward rolled on the track gets steps 1 and 2. Everything else goes
+ * straight to step 3: the starter, a copy bought in the shop, a form that
+ * has just been unlocked (bought, or as a bonus with a reward), and a fusion.
  */
 
 import { h, sprite } from '../dom.js';
 import { icon } from '../pixelart.js';
-import { TIERS, collection } from '../rewards.js';
+import { TIERS } from '../rewards.js';
 import { BASE } from '../forms.js';
 import { resolveMon } from '../mon.js';
 
@@ -36,11 +36,12 @@ const T_OPEN = 3200;
 /**
  * @param {object} ctx   App context.
  * @param {Array}  items What to show, in order. Each is one of:
- *   - a reward just added to state.rewards;
- *   - the starter (`starter: true`);
- *   - a bought copy (`bought: true`; `copyNumber` may say which copy it was);
+ *   - a copy just added to state.pokemon: a track reward (`source: "track"`),
+ *     the starter (`source: "starter"`) or a bought copy (`source: "shop"`;
+ *     `copyNumber` may say which copy it was);
  *   - a form or fusion just unlocked (`unlockedForm: true`, with `dexId` and
  *     `form`, or with `fusion`). This is not a copy and has no copy number.
+ *     `bonus: true` marks a form that came free with a track reward.
  */
 export function showReveal(ctx, items) {
   const reduced = globalThis.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -60,7 +61,7 @@ export function showReveal(ctx, items) {
     const forms = held.get(item.dexId);
     forms.set(formOf(item), (forms.get(formOf(item)) || 0) + by);
   };
-  for (const copy of collection(ctx.state)) bump(copy, 1);
+  for (const copy of ctx.state.pokemon) bump(copy, 1);
   for (const item of items) if (isCopy(item)) bump(item, -1);
   const info = items.map((item) => {
     if (!isCopy(item)) return { copy: 0, newForm: false };
@@ -78,10 +79,11 @@ export function showReveal(ctx, items) {
     timers = [];
   };
   const heading = (item) => {
-    if (item.starter) return 'YOUR STARTER';
+    if (item.source === 'starter') return 'YOUR STARTER';
     if (item.fusion) return 'FUSION COMPLETE';
+    if (item.bonus) return 'BONUS FORM';
     if (item.unlockedForm) return 'FORM UNLOCKED';
-    if (item.bought) return 'BOUGHT COPY';
+    if (item.source === 'shop') return 'BOUGHT COPY';
     return `REWARD AT ${item.trackPoints} POINTS`;
   };
   const remaining = () => items.length - index - 1;
@@ -90,7 +92,7 @@ export function showReveal(ctx, items) {
 
   function begin() {
     const item = items[index];
-    if (item.starter || item.bought || item.unlockedForm) reveal();
+    if (item.source !== 'track' || item.unlockedForm) reveal();
     else encounter();
   }
 
@@ -164,6 +166,7 @@ export function showReveal(ctx, items) {
     const mon = resolveMon(ctx, item);
     const tier = TIERS[item.tier] ? item.tier : 'common';
     const { copy, newForm } = info[index];
+    const isStarter = item.source === 'starter';
     ctx.sfx.play(item.shiny ? 'shiny' : tier === 'common' && !item.unlockedForm ? 'reward' : 'legendary');
 
     const sparkles = item.shiny
@@ -191,12 +194,13 @@ export function showReveal(ctx, items) {
         sparkles),
       h('div', { class: 'reveal-name' }, mon ? mon.name.toUpperCase() : `#${item.dexId}`),
       h('div', { class: 'badges' },
-        item.starter ? h('span', { class: 'badge badge-new' }, 'STARTER') : null,
+        isStarter ? h('span', { class: 'badge badge-new' }, 'STARTER') : null,
         item.fusion ? h('span', { class: 'badge badge-legendary' }, 'FUSED') : null,
-        !item.starter && !item.fusion ? h('span', { class: `badge badge-${tier}` }, TIERS[tier].label.toUpperCase()) : null,
+        !isStarter && !item.fusion ? h('span', { class: `badge badge-${tier}` }, TIERS[tier].label.toUpperCase()) : null,
         item.shiny ? h('span', { class: 'badge badge-shiny' }, 'SHINY') : null,
-        copy === 1 && !item.starter ? h('span', { class: 'badge badge-new' }, 'NEW') : null,
+        copy === 1 && !isStarter ? h('span', { class: 'badge badge-new' }, 'NEW') : null,
         newForm ? h('span', { class: 'badge badge-new' }, 'NEW FORM') : null,
+        item.bonus ? h('span', { class: 'badge badge-new' }, 'FREE') : null,
         item.pity ? h('span', { class: 'badge' }, 'PITY') : null),
       h('div', { class: 'label muted' }, detail),
       h('div', { class: 'reveal-footer' },

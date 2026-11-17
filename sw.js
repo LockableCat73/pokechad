@@ -12,6 +12,8 @@
  * sprite. They are fetched quietly in the background (about 3 MB in total),
  * so that any Pokémon can be revealed while offline.
  *
+ * It also handles a click on a reminder notification (see js/notify.js).
+ *
  * Bump VERSION to throw away both caches after a breaking change.
  */
 
@@ -28,8 +30,13 @@ const SHELL_FILES = [
   'data/forms.json',
   'js/app.js',
   'js/dom.js',
+  'js/encourage.js',
+  'js/favicon.js',
   'js/forms.js',
+  'js/holdings.js',
   'js/mon.js',
+  'js/notify.js',
+  'js/wakelock.js',
   'js/shop.js',
   'js/pixelart.js',
   'js/rewards.js',
@@ -51,7 +58,7 @@ const SHELL_FILES = [
 
 const ART_FILES = [
   'assets/fonts/PressStart2P-Regular.ttf',
-  'assets/icons/snorlax.png',
+  'assets/icons/snorlax-gmax.png',
   'assets/icons/zacian-crowned.png',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png',
@@ -93,6 +100,18 @@ self.addEventListener('message', (event) => {
   if (data && data.type === 'precache-art' && Array.isArray(data.urls)) {
     event.waitUntil(precacheArt(data.urls));
   }
+});
+
+// A reminder was clicked: bring the PokéChad tab forward, or open one.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const open = clients.find((client) => client.url.startsWith(self.registration.scope));
+      if (open) return open.focus();
+      return self.clients.openWindow(self.registration.scope);
+    }),
+  );
 });
 
 /** Download every listed file that is not cached yet, a few at a time. */

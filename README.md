@@ -14,16 +14,18 @@ Everything is saved in your browser. There is no account and no server.
 
 | | |
 |---|---|
-| **Record** | Tap **Add Chad Time** (Zacian) or **Add Chud Time** (Snorlax). Start the stopwatch, or add time after the fact. |
+| **Record** | Tap **Add Chad Time** (Crowned Zacian) or **Add Chud Time** (Gigantamax Snorlax). Start the stopwatch, or add time after the fact. |
 | **Rate** | When a session ends, give it 0 to 4 stars and a short description. |
 | **Points** | `floor(t/60 + t^1.05 × stars/2)` with `t` in active minutes. Chad adds it, chud subtracts the same amount. |
 | **Multiplier** | The stopwatch shows `1.05 × t^0.05 − 0.05` (never less than 1). It is a visual nudge to stay in the session and is not used in the maths. |
 | **Breaks** | Pause whenever you like; paused time does not count. A break longer than 35 minutes ends the session, with a red countdown over the last 5. |
+| **Reminders** | Every 45 minutes on the stopwatch, a short encouraging message with one of your Pokémon. With the tab in the background it arrives as a system notification. While a session runs the tab icon is Zacian or Snorlax, and the screen stays awake. |
 | **Starter** | Your first point lets you choose Bulbasaur, Charmander, Squirtle or Pikachu. |
 | **Rewards** | A random Pokémon every 100 points: 94% common, 5% legendary, 1% mythical. 20 rewards without a legendary guarantees one. Nothing is decided until you reach the mark; then a silhouette appears and you throw the ball to find out. Your first 6 come from generation 1, the next 6 from generations 1–2, the next 6 from generations 1–4, then anything goes. Evolution families unlock in Pokédex order (Weedle, then Kakuna, then Beedrill). |
 | **Copies** | Up to 7 of a common, 5 of a legendary, 2 of a mythical. The last copy is shiny. |
 | **Chud** | Chud time lowers your score but never takes a Pokémon away. The next reward comes when you pass your previous best. |
 | **Pokécoins** | Every reward also gives 1 Pokécoin. The Shop sells extra copies of Pokémon you have found (5 / 20 / 120), upgrade forms such as Mega and Gigantamax (150), and fusions (150). |
+| **Bonus forms** | A reward for a Pokémon you already hold has a 1-in-12 chance of unlocking one of its Mega, Gigantamax or similar forms for free. |
 | **Forms** | Regional and other alternate forms arrive with later copies of a Pokémon, one new form per copy. Any form you have unlocked, and any fusion, can be your buddy. |
 
 The dashboard shows your chad and chud time for the last 7 days, and links
@@ -42,9 +44,12 @@ your settings. **Load JSON** restores it, on this or any other device.
 Clearing your browser data deletes your progress, so export now and then. The
 dashboard reminds you after 14 days without a backup.
 
-The file is plain JSON and safe to edit by hand. Scores are recalculated from
-the sessions when a file is loaded. See
+The file is plain JSON and safe to edit by hand. Scores and the coin balance
+are recalculated when a file is loaded. See
 [documentation/storage.json.md](documentation/storage.json.md).
+
+Saves and backups from before the format changed (version 1) still load:
+they are converted on the spot, with nothing lost.
 
 ## Run it locally
 
@@ -116,9 +121,9 @@ adjust `tools/forms_rules.json` if something landed in the wrong group.
 |---|---|
 | [documentation/architecture.md](documentation/architecture.md) | How the code is organised and how data flows through it |
 | [documentation/scoring.md](documentation/scoring.md) | Points formula, display multiplier, the high-water rule |
-| [documentation/rewards.md](documentation/rewards.md) | Starter, tiers, odds, caps, shinies, pity |
+| [documentation/rewards.md](documentation/rewards.md) | Starter, tiers, odds, caps, shinies, pity, bonus forms |
 | [documentation/shop.md](documentation/shop.md) | Pokécoins, the shop, alternate forms, fusions, Zygarde |
-| [documentation/stopwatch.md](documentation/stopwatch.md) | Stopwatch states, pauses, the 35-minute break limit |
+| [documentation/stopwatch.md](documentation/stopwatch.md) | Stopwatch states, pauses, the 35-minute break limit, reminders and how to test them |
 | [documentation/pokedex-updater.md](documentation/pokedex-updater.md) | The Python updater and the monthly workflow |
 | [documentation/storage.json.md](documentation/storage.json.md) | The saved/exported JSON, field by field, and how to edit it |
 
