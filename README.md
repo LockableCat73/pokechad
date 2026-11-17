@@ -19,7 +19,7 @@ Everything is saved in your browser. There is no account and no server.
 | **Points** | `floor(t/60 + t^1.05 × stars/2)` with `t` in active minutes. Chad adds it, chud subtracts the same amount. |
 | **Multiplier** | The stopwatch shows `1.05 × t^0.05 − 0.05` (never less than 1). It is a visual nudge to stay in the session and is not used in the maths. |
 | **Breaks** | Pause whenever you like; paused time does not count. A break longer than 35 minutes ends the session, with a red countdown over the last 5. |
-| **Reminders** | Every 45 minutes on the stopwatch, a short encouraging message with one of your Pokémon. With the tab in the background it arrives as a system notification. While a session runs the tab icon is Zacian or Snorlax, and the screen stays awake. |
+| **Messages** | One of your Pokémon speaks when the stopwatch starts ("Let's do this!") and every 45 minutes after: encouragement for chad time, a guilt trip for chud time. Lines vary by the Pokémon's type ("You are on fire!"), and well-known Pokémon have lines of their own. They show on screen and as system notifications. While a session runs the tab icon is Zacian or Snorlax, and the screen stays awake. |
 | **Starter** | Your first point lets you choose Bulbasaur, Charmander, Squirtle or Pikachu. |
 | **Rewards** | A random Pokémon every 100 points: 94% common, 5% legendary, 1% mythical. 20 rewards without a legendary guarantees one. Nothing is decided until you reach the mark; then a silhouette appears and you throw the ball to find out. Your first 6 come from generation 1, the next 6 from generations 1–2, the next 6 from generations 1–4, then anything goes. Evolution families unlock in Pokédex order (Weedle, then Kakuna, then Beedrill). |
 | **Copies** | Up to 7 of a common, 5 of a legendary, 2 of a mythical. The last copy is shiny. |
@@ -115,6 +115,13 @@ which two Pokémon make a fusion, or what a form should be called.
 So after a new game adds forms, check the pull request the workflow opens and
 adjust `tools/forms_rules.json` if something landed in the wrong group.
 
+### Messages
+
+The updater records every Pokémon's **types**, so a new Pokémon gets the
+general and type-based messages with no edit. The lines themselves live in
+`js/messages.js` and are written by hand, including the ones for specific
+Pokémon: a new Pokémon has none of its own until someone adds them.
+
 ## Documentation
 
 | File | What it covers |
@@ -123,7 +130,7 @@ adjust `tools/forms_rules.json` if something landed in the wrong group.
 | [documentation/scoring.md](documentation/scoring.md) | Points formula, display multiplier, the high-water rule |
 | [documentation/rewards.md](documentation/rewards.md) | Starter, tiers, odds, caps, shinies, pity, bonus forms |
 | [documentation/shop.md](documentation/shop.md) | Pokécoins, the shop, alternate forms, fusions, Zygarde |
-| [documentation/stopwatch.md](documentation/stopwatch.md) | Stopwatch states, pauses, the 35-minute break limit, reminders and how to test them |
+| [documentation/stopwatch.md](documentation/stopwatch.md) | Stopwatch states, pauses, the 35-minute break limit, start and 45-minute messages and how to test them |
 | [documentation/pokedex-updater.md](documentation/pokedex-updater.md) | The Python updater and the monthly workflow |
 | [documentation/storage.json.md](documentation/storage.json.md) | The saved/exported JSON, field by field, and how to edit it |
 

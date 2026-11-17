@@ -24,7 +24,19 @@ import {
   eligible,
 } from '../js/rewards.js';
 import { trackCopies, starterCopy } from '../js/holdings.js';
-import { reminderText, pickReminderCopy, spokenTime, CHAD_LINES, CHUD_LINES } from '../js/encourage.js';
+import {
+  reminderText,
+  startText,
+  pickLine,
+  linePools,
+  pickReminderCopy,
+  spokenTime,
+  OWN_SHARE,
+  TYPE_SHARE,
+} from '../js/encourage.js';
+import { GENERAL, NO_POKEMON, BY_TYPE, BY_POKEMON } from '../js/messages.js';
+import { indexForms } from '../js/forms.js';
+import { resolveMon } from '../js/mon.js';
 import * as sw from '../js/stopwatch.js';
 import {
   defaultState,
@@ -841,21 +853,213 @@ test('the reminder count survives a save and a reload', () => {
   assert.equal(normalize(JSON.parse(JSON.stringify(state))).active.remindersSent, 0);
 });
 
-test('reminder words: time, a Pokémon held, and a different tone for chud', () => {
-  assert.deepEqual([45, 60, 90, 135, 180].map(spokenTime), ['45M', '1H', '1H 30M', '2H 15M', '3H']);
-  const chad = reminderText('chad', 90, 'Pikachu', () => 0);
-  assert.equal(chad.title, '1H 30M of chad time');
-  assert.equal(chad.body, CHAD_LINES[0].replace('{name}', 'Pikachu'));
-  const chud = reminderText('chud', 45, 'Snorlax', () => 0.999);
-  assert.equal(chud.title, '45M of chud time');
-  assert.equal(chud.body, CHUD_LINES.at(-1).replace('{name}', 'Snorlax'));
-  for (const line of [...CHAD_LINES, ...CHUD_LINES]) assert.ok(line.includes('{name}'));
-  // With no Pokémon yet there is still something to say.
-  assert.ok(reminderText('chad', 45, null).body.length > 0);
-  assert.ok(!reminderText('chud', 45, null).body.includes('{name}'));
+// ---------------------------------------------------------------- messages
 
+const formsData = JSON.parse(readFileSync(new URL('../data/forms.json', import.meta.url), 'utf8'));
+const TYPES = [
+  'normal', 'fire', 'water', 'electric', 'grass', 'ice', 'fighting', 'poison', 'ground',
+  'flying', 'psychic', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy',
+];
+const speaker = (slug) => {
+  const s = dex.find((x) => x.slug === slug);
+  return { name: s.name, slug: s.slug, types: s.types };
+};
+
+test('every species and every form carries its types', () => {
+  for (const s of dex) {
+    assert.ok(Array.isArray(s.types) && s.types.length >= 1 && s.types.length <= 2, `types of #${s.id}`);
+    for (const t of s.types) assert.ok(TYPES.includes(t), `#${s.id} has unknown type ${t}`);
+  }
+  assert.deepEqual(dex.find((s) => s.slug === 'charizard').types, ['fire', 'flying']);
+  assert.deepEqual(dex.find((s) => s.slug === 'pikachu').types, ['electric']);
+  for (const entry of [...formsData.forms, ...formsData.fusions]) {
+    assert.ok(Array.isArray(entry.types) && entry.types.length >= 1, `types of ${entry.name}`);
+  }
+  // A form's types are its own.
+  assert.deepEqual(formsData.forms.find((f) => f.name === 'vulpix-alola').types, ['ice']);
+  assert.deepEqual(formsData.forms.find((f) => f.name === 'charizard-mega-x').types, ['fire', 'dragon']);
+});
+
+test('a copy in an alternate form speaks with the form\'s types', () => {
+  const ctx = { dex: { byId: new Map(dex.map((s) => [s.id, s])) }, forms: indexForms(formsData) };
+  const vulpix = dex.find((s) => s.slug === 'vulpix');
+  assert.deepEqual(resolveMon(ctx, { dexId: vulpix.id }).types, ['fire']);
+  const alolan = resolveMon(ctx, { dexId: vulpix.id, form: 'alola' });
+  assert.deepEqual(alolan.types, ['ice']);
+  assert.equal(alolan.name, 'Alolan Vulpix');
+  assert.deepEqual(resolveMon(ctx, { fusion: 643646000 }).types, ['dragon', 'ice']);
+  const pools = linePools('chad', 'reminder', { name: alolan.name, slug: alolan.species.slug, types: alolan.types });
+  assert.ok(pools.type.includes('Ice cold focus. Alolan Vulpix respects it.'));
+  assert.ok(!pools.type.some((line) => line.includes('on fire')));
+});
+
+test('the message pools are complete and refer only to things that exist', () => {
+  // Every type in the data has lines for both kinds, and no type is made up.
+  assert.deepEqual(Object.keys(BY_TYPE).sort(), TYPES.slice().sort());
+  for (const [type, pool] of Object.entries(BY_TYPE)) {
+    assert.ok(pool.chad.length >= 3, `${type} chad lines`);
+    assert.ok(pool.chud.length >= 2, `${type} chud lines`);
+    for (const line of [...pool.chad, ...pool.chud]) assert.ok(line.includes('{name}'), `${type}: ${line}`);
+  }
+  // Easter eggs are keyed by a real species.
+  const bySlug = new Map(dex.map((s) => [s.slug, s]));
+  assert.ok(Object.keys(BY_POKEMON).length >= 40);
+  for (const [slug, pool] of Object.entries(BY_POKEMON)) {
+    assert.ok(bySlug.has(slug), `${slug} is not a species in data/pokedex.json`);
+    assert.deepEqual(Object.keys(pool).filter((k) => k !== 'chad' && k !== 'chud'), []);
+    const lines = [...(pool.chad || []), ...(pool.chud || [])];
+    assert.ok(lines.length >= 1, `${slug} has no lines`);
+    // They speak in the Pokémon's own voice, so there is no name to fill in.
+    for (const line of lines) assert.ok(!line.includes('{name}'), `${slug}: ${line}`);
+  }
+  for (const kind of ['chad', 'chud']) {
+    for (const moment of ['start', 'reminder']) {
+      assert.ok(GENERAL[kind][moment].length >= 8, `general ${kind} ${moment}`);
+      assert.ok(NO_POKEMON[kind][moment].length >= 2);
+      for (const line of NO_POKEMON[kind][moment]) assert.ok(!line.includes('{name}'));
+    }
+  }
+  // No line is in two places, and none is too long for a notification.
+  const all = [
+    ...Object.values(GENERAL).flatMap((k) => [...k.start, ...k.reminder]),
+    ...Object.values(NO_POKEMON).flatMap((k) => [...k.start, ...k.reminder]),
+    ...Object.values(BY_TYPE).flatMap((k) => [...k.chad, ...k.chud]),
+    ...Object.values(BY_POKEMON).flatMap((k) => [...(k.chad || []), ...(k.chud || [])]),
+  ];
+  assert.equal(new Set(all).size, all.length, 'a line is repeated');
+  for (const line of all) assert.ok(line.length <= 90, `too long: ${line}`);
+  assert.ok(GENERAL.chad.start.some((line) => line.startsWith("Let's do this!")));
+});
+
+test('a Pokémon with its own lines uses them half the time; the rest is type and general', () => {
+  assert.equal(OWN_SHARE, 0.5);
+  assert.equal(TYPE_SHARE, 0.5);
+  const charizard = speaker('charizard');
+  const pools = linePools('chad', 'reminder', charizard);
+  assert.equal(pools.own.length, 2);
+  assert.equal(pools.type.length, BY_TYPE.fire.chad.length + BY_TYPE.flying.chad.length, 'a dual type draws from both');
+  assert.ok(pools.general.every((line) => !line.includes('{name}')));
+
+  const rng = seeded(77);
+  const tally = { own: 0, type: 0, general: 0 };
+  const seen = new Set();
+  const tries = 20_000;
+  for (let i = 0; i < tries; i++) {
+    const line = pickLine({ kind: 'chad', moment: 'reminder', mon: charizard, rng });
+    seen.add(line);
+    tally[pools.own.includes(line) ? 'own' : pools.type.includes(line) ? 'type' : 'general']++;
+  }
+  assert.ok(Math.abs(tally.own / tries - 0.5) < 0.02, JSON.stringify(tally));
+  assert.ok(Math.abs(tally.type / tries - 0.25) < 0.02, JSON.stringify(tally));
+  assert.ok(Math.abs(tally.general / tries - 0.25) < 0.02, JSON.stringify(tally));
+  // Everything on offer does come up, fire and flying alike.
+  assert.equal(seen.size, pools.own.length + pools.type.length + pools.general.length);
+  assert.ok(seen.has('You are on fire! Charizard approves.'));
+  assert.ok(seen.has('Charizard used Tailwind! Everything is faster.'));
+  assert.ok(seen.has('Charizard only listens to trainers this focused.'));
+
+  // A Pokémon with no lines of its own: type and general, half each.
+  const pidgey = speaker('pidgey');
+  const plain = linePools('chud', 'start', pidgey);
+  assert.deepEqual(plain.own, []);
+  let typed = 0;
+  for (let i = 0; i < tries; i++) {
+    if (plain.type.includes(pickLine({ kind: 'chud', moment: 'start', mon: pidgey, rng }))) typed++;
+  }
+  assert.ok(Math.abs(typed / tries - 0.5) < 0.02, `${typed} type lines`);
+});
+
+test('where a roll lands decides the pool', () => {
+  const pikachu = speaker('pikachu');
+  const pools = linePools('chad', 'start', pikachu);
+  const line = (roll) => pickLine({ kind: 'chad', moment: 'start', mon: pikachu, rng: scriptedRng(roll, 0) });
+  assert.equal(line(0), pools.own[0]);
+  assert.equal(line(0.49), pools.own[0]);
+  assert.equal(line(0.5), pools.type[0]);
+  assert.equal(line(0.74), pools.type[0]);
+  assert.equal(line(0.75), pools.general[0]);
+  assert.equal(pools.general[0], "Let's do this! Pikachu is with you.");
+  // A chud-only Pokémon has nothing of its own to say during chad time.
+  const shuckle = speaker('shuckle');
+  assert.deepEqual(linePools('chad', 'reminder', shuckle).own, []);
+  assert.equal(linePools('chud', 'reminder', shuckle).own.length, 1);
+  // A type nobody has written lines for yet falls back to the general pool.
+  const future = { name: 'Newmon', slug: 'newmon', types: ['sound'] };
+  assert.equal(
+    pickLine({ kind: 'chad', moment: 'reminder', mon: future, rng: scriptedRng(0, 0) }),
+    GENERAL.chad.reminder[0].replace('{name}', 'Newmon'),
+  );
+});
+
+/** An rng that returns the given numbers in turn, then keeps returning the last. */
+function scriptedRng(...values) {
+  let i = 0;
+  return () => values[Math.min(i++, values.length - 1)];
+}
+
+test('the same line is never shown twice in a row', () => {
+  for (const slug of ['charizard', 'pidgey', 'shuckle', 'snorlax']) {
+    for (const kind of ['chad', 'chud']) {
+      const rng = seeded(5);
+      let last = null;
+      for (let i = 0; i < 3000; i++) {
+        const line = pickLine({ kind, moment: 'reminder', mon: speaker(slug), last, rng });
+        assert.notEqual(line, last, `${slug} ${kind}`);
+        last = line;
+      }
+    }
+  }
+  // Shuckle has a single chud line of its own: asked to repeat it, it
+  // says something general instead.
+  const own = linePools('chud', 'reminder', speaker('shuckle')).own[0];
+  const next = pickLine({ kind: 'chud', moment: 'reminder', mon: speaker('shuckle'), last: own, rng: scriptedRng(0, 0) });
+  assert.equal(next, GENERAL.chud.reminder[0].replace('{name}', 'Shuckle'));
+  // With no Pokémon there are still two lines to alternate between.
+  const none = pickLine({ kind: 'chud', moment: 'start', mon: null, rng: () => 0 });
+  assert.notEqual(pickLine({ kind: 'chud', moment: 'start', mon: null, last: none, rng: () => 0 }), none);
+});
+
+test('start and reminder messages: titles, tone, and no Pokémon yet', () => {
+  assert.deepEqual([45, 60, 90, 135, 180].map(spokenTime), ['45M', '1H', '1H 30M', '2H 15M', '3H']);
+  const pidgey = speaker('pidgey');
+  const start = startText('chad', pidgey, { rng: scriptedRng(0.9, 0) });
+  assert.deepEqual(start, { title: 'Chad time started', body: "Let's do this! Pidgey is with you." });
+  const chudStart = startText('chud', pidgey, { rng: scriptedRng(0.9, 0) });
+  assert.deepEqual(chudStart, { title: 'Chud time started', body: 'Really? Pidgey expected better.' });
+  const chad = reminderText('chad', 90, pidgey, { rng: scriptedRng(0.9, 0) });
+  assert.deepEqual(chad, { title: '1H 30M of chad time', body: 'Pidgey is cheering you on. Keep going!' });
+  const chud = reminderText('chud', 45, pidgey, { rng: scriptedRng(0.9, 0) });
+  assert.deepEqual(chud, { title: '45M of chud time', body: 'Pidgey is disappointed. Still here?' });
+  // The name is filled in everywhere; nothing is left as a placeholder.
+  for (const slug of ['charizard', 'snorlax', 'pidgey', 'zacian']) {
+    for (const kind of ['chad', 'chud']) {
+      for (const moment of ['start', 'reminder']) {
+        const pools = linePools(kind, moment, speaker(slug));
+        for (const line of [...pools.own, ...pools.type, ...pools.general]) assert.ok(!line.includes('{'), line);
+      }
+    }
+  }
+  // With no Pokémon yet there is still something to say, at both moments.
+  for (const kind of ['chad', 'chud']) {
+    assert.ok(NO_POKEMON[kind].start.includes(startText(kind, null).body));
+    assert.ok(NO_POKEMON[kind].reminder.includes(reminderText(kind, 45, null).body));
+  }
+});
+
+test('the Pokémon in a message is picked by species, not by copy', () => {
   assert.equal(pickReminderCopy([], seeded(1)), null);
   const copies = [{ dexId: 1 }, { dexId: 4 }, { dexId: 7 }];
   assert.equal(pickReminderCopy(copies, () => 0).dexId, 1);
   assert.equal(pickReminderCopy(copies, () => 0.999).dexId, 7);
+  // 100 Zygarde and one Pidgey: each species half the time.
+  const crowd = [...Array.from({ length: 100 }, () => ({ dexId: 718 })), { dexId: 16 }];
+  const rng = seeded(9);
+  let pidgey = 0;
+  for (let i = 0; i < 4000; i++) if (pickReminderCopy(crowd, rng).dexId === 16) pidgey++;
+  assert.ok(Math.abs(pidgey / 4000 - 0.5) < 0.04, `${pidgey} of 4000`);
+  // Within a species any copy can come up, so its forms are seen too.
+  const rotom = [{ dexId: 479 }, { dexId: 479, form: 'heat' }, { dexId: 479, form: 'wash' }];
+  const forms = new Set();
+  for (let i = 0; i < 200; i++) forms.add(pickReminderCopy(rotom, rng).form || 'base');
+  assert.deepEqual([...forms].sort(), ['base', 'heat', 'wash']);
 });

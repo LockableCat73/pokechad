@@ -28,7 +28,7 @@ anywhere; it finds the repository from its own location.
 
 | Option | Effect |
 |---|---|
-| *(none)* | Incremental: fetch details only for species not yet in `pokedex.json` (or whose entry lacks a field this version records), and download only sprites not yet on disk. Takes a few seconds when nothing is new. |
+| *(none)* | Incremental: fetch details only for species not yet in `pokedex.json` (or whose entry lacks a field this version records; the same goes for forms), and download only sprites not yet on disk. Takes a few seconds when nothing is new. |
 | `--refresh` | Re-fetch every species. Picks up a renamed or reclassified Pokémon, or a change to an evolution family. About a minute. The monthly workflow uses this. |
 | `--workers N` | Parallel downloads (default 8). |
 
@@ -48,12 +48,18 @@ Commit whatever it changed under `data/` and `assets/`.
 1. **List species.** `GET /api/v2/pokemon-species?limit=100000`.
 2. **Fetch details** for the species it needs (`/pokemon-species/{id}/`) and
    keep: `id`, `slug` (PokeAPI's name), `name` (English), `gen`, `tier`,
-   `family` and `color`.
+   `family` and `color`. One more request, to the species' default
+   `/pokemon/{id}/` record, gives its `types`.
 3. **Tier.** `is_mythical` → `mythical`; otherwise `is_legendary` →
    `legendary`; otherwise `common`.
    **Family.** The id at the end of the species' `evolution_chain` URL. All
    members of one evolutionary line share it. The site uses it to unlock a
    family in Pokédex order (see [rewards.md](rewards.md#evolution-families)).
+   **Types.** The one or two types of the species' ordinary form, first type
+   first (`["fire", "flying"]`). The site uses them to choose messages that
+   suit the Pokémon (see [stopwatch.md](stopwatch.md#messages)). Alternate
+   forms carry their own `types` in `forms.json`, since a form can differ
+   from its species (Alolan Vulpix is Ice).
    No family is listed by hand anywhere.
    **Colour.** PokeAPI's Pokédex colour name (`red`, `blue`, `green`,
    `yellow`, ...). The site uses it to tint the starter choice.
@@ -78,7 +84,7 @@ Network errors and rate limits are retried with backoff.
   "count": 1025,
   "tiers": { "common": 931, "legendary": 71, "mythical": 23 },
   "species": [
-    {"id": 1, "slug": "bulbasaur", "name": "Bulbasaur", "gen": 1, "tier": "common", "family": 1, "color": "green", "sprite": true, "shiny": true}
+    {"id": 1, "slug": "bulbasaur", "name": "Bulbasaur", "gen": 1, "tier": "common", "family": 1, "color": "green", "types": ["grass", "poison"], "sprite": true, "shiny": true}
   ]
 }
 ```

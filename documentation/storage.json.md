@@ -310,7 +310,7 @@ A stopwatch in progress, or `null`.
 `pausedAt` is the start of the break in progress, or `null` when running.
 `remindersSent` is how many 45-minute reminders this session has already
 shown, so that a refresh does not show one again (see
-[stopwatch.md](stopwatch.md#reminders)).
+[stopwatch.md](stopwatch.md#timing-and-delivery)).
 
 `active` matters in `localStorage` (it is how the stopwatch survives a
 refresh). **On import it is always dropped**: a stopwatch that was running

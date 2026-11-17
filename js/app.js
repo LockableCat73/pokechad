@@ -24,7 +24,7 @@ import * as stopwatch from './stopwatch.js';
 import { createSfx } from './sfx.js';
 import { h, clear, sprite, setText, fmtClock, fmtPoints } from './dom.js';
 import { resolveMon } from './mon.js';
-import { reminderText, pickReminderCopy } from './encourage.js';
+import { reminderText, startText, pickReminderCopy } from './encourage.js';
 import { askPermission, notify, permission } from './notify.js';
 import { syncWakeLock } from './wakelock.js';
 import { setFavicon } from './favicon.js';
@@ -149,7 +149,7 @@ async function boot() {
   registerServiceWorker();
 
   // For trying things from the browser's console. See documentation/stopwatch.md.
-  window.pokechad = { testReminder };
+  window.pokechad = { testReminder, testStart };
 }
 
 /**
@@ -260,41 +260,77 @@ function updateChrome(now) {
   document.title = `${clock} ${label} · PokéChad`;
 }
 
-// ------------------------------------------------------------------ reminders
+// ------------------------------------------------------------------ messages
+//
+// The words come from js/encourage.js (which line) and js/messages.js (the
+// lines). Here they are put on screen and, when allowed, sent as a system
+// notification.
+
+/** The line shown last time, so the next message never repeats it. */
+let lastLine = null;
 
 /**
- * Show a 45-minute reminder: an encouraging line with a random Pokémon the
- * player holds. On screen it is a message with a chime. If the tab is in the
- * background it is also sent as a system notification, when those are allowed.
+ * Show a message spoken by a random Pokémon the player holds.
+ *
+ * It always appears on screen. It is also sent as a system notification
+ * when `system` is "always", or when it is "hidden" and the tab is in the
+ * background, provided notifications are allowed.
+ *
+ * @param {object} args
+ * @param {(mon: object|null, options: {last: string|null, rng: () => number}) => {title:string, body:string}} args.text
+ *   Builds the words for the chosen Pokémon (null when none is held).
+ * @param {'always'|'hidden'} args.system
+ * @param {string} args.tag   A later notification with the same tag replaces this one.
+ * @param {string} [args.sound] Sound effect to play, if any.
+ * @param {number} [args.duration] How long the on-screen message stays, in milliseconds.
+ * @returns {Promise<boolean>} Whether a system notification was sent.
+ */
+function say({ text, system, tag, sound, duration = 12000 }) {
+  const copy = pickReminderCopy(ctx.state.pokemon, randomFloat);
+  const mon = copy ? resolveMon(ctx, copy) : null;
+  const shiny = Boolean(copy && copy.shiny && mon && mon.shiny);
+  const speaker = mon ? { name: mon.name, slug: mon.species ? mon.species.slug : null, types: mon.types } : null;
+  const { title, body } = text(speaker, { last: lastLine, rng: randomFloat });
+  lastLine = body;
+  toast(`${title}. ${body}`, duration, mon ? { mon, shiny } : null);
+  if (sound) ctx.sfx.play(sound);
+  if (system !== 'always' && !document.hidden) return Promise.resolve(false);
+  const icon = mon ? `assets/sprites/${shiny ? 'shiny' : 'normal'}/${mon.id}.png` : 'assets/icons/icon-192.png';
+  return notify({ title, body, icon, tag });
+}
+
+/**
+ * The 45-minute reminder: on screen with a chime, and as a system
+ * notification if the tab is in the background.
  *
  * @param {'chad'|'chud'} kind
  * @param {number} minutes Active time on the stopwatch.
  * @param {{always?: boolean}} [options] `always` sends the system
  *   notification even with the tab in front (used by testReminder).
- * @returns {Promise<boolean>} Whether a system notification was sent.
  */
 function remind(kind, minutes, { always = false } = {}) {
-  const copy = pickReminderCopy(ctx.state.pokemon, randomFloat);
-  const mon = copy ? resolveMon(ctx, copy) : null;
-  const shiny = Boolean(copy && copy.shiny && mon && mon.shiny);
-  const { title, body } = reminderText(kind, minutes, mon ? mon.name : null, randomFloat);
-  toast(`${title}. ${body}`, 12000, mon ? { mon, shiny } : null);
-  ctx.sfx.play('reminder');
-  if (!document.hidden && !always) return Promise.resolve(false);
-  const icon = mon ? `assets/sprites/${shiny ? 'shiny' : 'normal'}/${mon.id}.png` : 'assets/icons/icon-192.png';
-  return notify({ title, body, icon, tag: 'pokechad-reminder' });
+  return say({
+    text: (mon, options) => reminderText(kind, minutes, mon, options),
+    system: always ? 'always' : 'hidden',
+    tag: 'pokechad-reminder',
+    sound: 'reminder',
+  });
 }
 
 /**
- * Console helper: `pokechad.testReminder()` or `pokechad.testReminder('chud')`.
- * Asks for permission if it has not been asked, then sends a reminder now,
- * as a system notification as well as on screen.
+ * The message when a stopwatch starts: "Let's do this!" for chad time,
+ * something discouraging for chud time. Sent as a system notification as
+ * well, even though the tab is in front. No sound of its own; the stopwatch
+ * has just played its start sound.
  *
- * @returns {Promise<string>} What happened, in words.
+ * @param {'chad'|'chud'} kind
  */
-async function testReminder(kind = 'chad') {
-  const allowed = await askPermission();
-  const sent = await remind(kind === 'chud' ? 'chud' : 'chad', 45, { always: true });
+function announceStart(kind) {
+  return say({ text: (mon, options) => startText(kind, mon, options), system: 'always', tag: 'pokechad-start', duration: 7000 });
+}
+
+/** What a console helper answers with. */
+function testResult(sent, allowed) {
   if (sent) return 'Sent. Look for the system notification.';
   if (allowed === 'unsupported') return 'This browser has no notifications. The on-screen message was shown.';
   if (allowed === 'denied') return 'Notifications are blocked for this site. Allow them in the site settings (the icon left of the address). The on-screen message was shown.';
@@ -302,15 +338,42 @@ async function testReminder(kind = 'chad') {
   return `Could not send (permission is "${permission()}"). The on-screen message was shown.`;
 }
 
+/**
+ * Console helper: `pokechad.testReminder()` or `pokechad.testReminder('chud')`.
+ * Asks for permission if it has not been asked, then sends a 45-minute
+ * reminder now, as a system notification as well as on screen.
+ *
+ * @returns {Promise<string>} What happened, in words.
+ */
+async function testReminder(kind = 'chad') {
+  const allowed = await askPermission();
+  return testResult(await remind(kind === 'chud' ? 'chud' : 'chad', 45, { always: true }), allowed);
+}
+
+/**
+ * Console helper: `pokechad.testStart()` or `pokechad.testStart('chud')`.
+ * Sends the message a starting stopwatch would, without starting one.
+ *
+ * @returns {Promise<string>} What happened, in words.
+ */
+async function testStart(kind = 'chad') {
+  const allowed = await askPermission();
+  return testResult(await announceStart(kind === 'chud' ? 'chud' : 'chad'), allowed);
+}
+
 // ------------------------------------------------------------------ sessions
 
 function startSession(kind) {
   if (ctx.state.active || ctx.state.pendingRating) return;
-  ctx.state.active = stopwatch.start(kind, Date.now());
+  const active = stopwatch.start(kind, Date.now());
+  ctx.state.active = active;
   save();
-  // The first stopwatch asks once whether reminders may be shown as system
-  // notifications. Whatever the answer, it is never asked again.
-  askPermission();
+  // The first stopwatch asks once whether messages may be shown as system
+  // notifications; whatever the answer, it is never asked again. The start
+  // message follows the answer, unless the session has ended by then.
+  askPermission().then(() => {
+    if (ctx.state.active && ctx.state.active.startedAt === active.startedAt) announceStart(kind);
+  });
   ctx.sfx.play('start');
   closeModal(true);
   go('');

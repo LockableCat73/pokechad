@@ -1,9 +1,10 @@
 # Stopwatch
 
 Code: [`js/stopwatch.js`](../js/stopwatch.js) (logic),
-[`js/encourage.js`](../js/encourage.js), [`js/notify.js`](../js/notify.js),
+[`js/encourage.js`](../js/encourage.js), [`js/messages.js`](../js/messages.js),
+[`js/notify.js`](../js/notify.js),
 [`js/wakelock.js`](../js/wakelock.js), [`js/favicon.js`](../js/favicon.js)
-(reminders, screen, tab icon),
+(messages, screen, tab icon),
 [`js/views/dashboard.js`](../js/views/dashboard.js) (`sessionPanel`, `tick`),
 [`js/app.js`](../js/app.js) (`startSession`, `pauseSession`, `resumeSession`,
 `stopSession`, `autoEnd`, `tick`).
@@ -125,19 +126,63 @@ dialog cannot be dismissed, and it reopens if you reload. You can:
 - The screen is kept awake where the browser allows it (`js/wakelock.js`).
   There is no switch for this.
 
-## Reminders
+## Messages
 
-Every **45 minutes of active time** the site shows a short encouraging
-message with a random Pokémon you hold: "1H 30M of chad time. Pikachu is
-cheering you on. Keep going!". During chud time it suggests wrapping up
-instead.
+PokéChad speaks through a Pokémon you hold at two moments:
 
-| Where you are | What you get |
-|---|---|
-| PokéChad is in front | A message at the bottom of the screen with the Pokémon, and a chime. |
-| The tab is in the background | The same, plus a **system notification**. Clicking it brings the tab forward. |
+| Moment | Chad session | Chud session |
+|---|---|---|
+| **The stopwatch starts** | "Chad time started. Let's do this! Pikachu is with you." | "Chud time started. Really? Pikachu expected better." |
+| **Every 45 minutes of active time** | "1H 30M of chad time. You are on fire! Charizard approves." | "45M of chud time. Even Snorlax gets up eventually." |
 
-Details:
+Chad lines cheer you on. Chud lines are meant to put you off: playful guilt,
+never cruel.
+
+| | On screen | System notification |
+|---|---|---|
+| Start message | Yes, with the Pokémon's picture | Yes, even though the tab is in front |
+| 45-minute reminder | Yes, with the picture and a chime | Only when the tab is in the background. Clicking it brings the tab forward. |
+
+### Where a line comes from
+
+Code: [`js/encourage.js`](../js/encourage.js) picks; the lines are in
+[`js/messages.js`](../js/messages.js).
+
+| Pool | Used for | Example |
+|---|---|---|
+| `GENERAL` | Any Pokémon. Split by kind and by moment. | "{name} used Helping Hand! Keep it up." |
+| `BY_TYPE` | A Pokémon of that type. A dual type draws from both of its types. | Fire: "You are on fire! {name} approves." |
+| `BY_POKEMON` | One well-known Pokémon, keyed by its slug. Easter eggs. | Magikarp: "Keep splashing. Every Gyarados started here." |
+
+`pickLine()` chooses the pool first, then a line in it:
+
+| The Pokémon... | Own line | Type line | General line |
+|---|---|---|---|
+| has lines of its own | 1 in 2 | 1 in 4 | 1 in 4 |
+| has none | – | 1 in 2 | 1 in 2 |
+
+- A pool with nothing to offer gives its share to the general pool.
+- The line shown last time is never shown again straight away.
+- The Pokémon is picked evenly among the **species** you hold
+  (`pickReminderCopy()`), so a hundred copies of one do not crowd out the
+  rest. Within the species any copy may come up, in the form it arrived in.
+- Types come from the data: `types` on each species in `data/pokedex.json`,
+  and on each alternate form in `data/forms.json`. A copy in an alternate
+  form uses the form's types (Alolan Vulpix gets Ice lines, not Fire).
+- With no Pokémon held yet, a line from `NO_POKEMON` is used and the picture
+  is the app icon.
+
+**What keeps itself up to date:** the updater records the types of every new
+Pokémon and form, so they get type and general lines with no edit.
+**What does not:** the lines themselves, and above all `BY_POKEMON`, are
+written by hand. A new Pokémon has no easter eggs until someone adds them.
+
+**Adding a line** is adding a string to the right list in `js/messages.js`.
+Use `{name}` for the Pokémon's name in `GENERAL` and `BY_TYPE`; `BY_POKEMON`
+lines speak in the Pokémon's own voice and take no placeholder. The tests
+check that every type and every Pokémon named there exists in the data.
+
+### Timing and delivery
 
 - Reminders follow active time. A break does not count towards the 45
   minutes, and nothing arrives during a break.
@@ -145,16 +190,18 @@ Details:
   have been dealt with, so a refresh never repeats one. If several marks pass
   unseen (the computer slept), you get one reminder on return, not one per
   mark (`reminderStatus()`).
-- The words are in `js/encourage.js`. With no Pokémon yet, a line without a
-  name is used and the picture is the app icon.
+- The start message is not one of the 45-minute reminders; the first of
+  those still arrives at 45:00. It is shown for the stopwatch only, not for
+  "add past time".
 - **Permission.** The first time you start a stopwatch the browser asks
-  whether PokéChad may show notifications. If you say no, or the browser has
-  none, you still get the on-screen message. The question is asked once.
-- **No server.** The page decides when to remind you, so it has to be
-  running. A background tab on a computer is fine. A phone that has locked,
-  or put the browser to sleep, cannot be reached; that is why the screen is
-  kept awake during a session. Time itself is always counted correctly from
-  the saved timestamps, whatever happens to the reminders.
+  whether PokéChad may show notifications, and the start message follows
+  your answer. If you say no, or the browser has none, you still get the
+  on-screen messages. The question is asked once.
+- **No server.** The page decides when to speak, so it has to be running. A
+  background tab on a computer is fine. A phone that has locked, or put the
+  browser to sleep, cannot be reached; that is why the screen is kept awake
+  during a session. Time itself is always counted correctly from the saved
+  timestamps, whatever happens to the messages.
 
 ### Trying it from the browser's console
 
@@ -180,7 +227,20 @@ what happened in words.
 pokechad.testReminder('chud')
 ```
 
-The same with the chud wording.
+The same with a chud line.
+
+```js
+pokechad.testStart()
+```
+
+```js
+pokechad.testStart('chud')
+```
+
+The message a starting stopwatch would send, without starting one.
+
+Each call picks a Pokémon and a line afresh, so running one a few times shows
+the variety.
 
 If nothing appears although it says "Sent": check that notifications are
 switched on for your browser in the operating system's settings, and that Do
