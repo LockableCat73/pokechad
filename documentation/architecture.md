@@ -13,11 +13,17 @@ js/
   app.js                 boot, state ownership, routing, the tick, actions, dialogs
   state.js               default state, validation, load/save, export/import
   scoring.js             points formula, display multiplier, recalculation   (pure)
-  rewards.js             starter, tiers, rolls, caps, shinies, pity           (pure)
+  holdings.js            reading the save: copies, forms, fusions, coins     (pure)
+  rewards.js             starter, tiers, rolls, caps, shinies, pity, bonus    (pure)
   forms.js               alternate forms: lookups, names, form order          (pure)
-  shop.js                Pokécoins, purchases, fusions, Zygarde               (pure)
+  shop.js                prices and purchases, fusions, Zygarde               (pure)
   mon.js                 turns a species, form or fusion into a sprite
-  stopwatch.js           start / pause / resume / finish, break limit         (pure)
+  stopwatch.js           start / pause / resume / finish, break limit,
+                         when a reminder is due                               (pure)
+  encourage.js           the words of the 45-minute reminders                 (pure)
+  notify.js              system notifications
+  wakelock.js            keeps the screen on while a session exists
+  favicon.js             the tab icon: Zacian, Snorlax or the default
   dom.js                 h() element helper, formatters, sprite()
   pixelart.js            hand-drawn icons as text bitmaps, rating stars
   sfx.js                 square-wave sound effects (Web Audio)
@@ -26,7 +32,8 @@ js/
     rate.js              rating dialog and "add past time" dialog
     starter.js           the one-off starter choice
     reveal.js            the encounter: silhouette, throw, reveal
-    pokedex.js           totals bar, all / shinies / fused switch, grid, entry with forms
+    pokedex.js           totals bar, all / shinies / fused switch, grid, and
+                         the full-page entry for one Pokémon
     shop.js              the Shop screen
     cards.js             fusion card and buy button, shared by Pokédex and Shop
     history.js           list of every session
@@ -37,25 +44,37 @@ manifest.webmanifest     install metadata
 data/pokedex.json        generated: every species with tier and sprite flags
 data/forms.json          generated: alternate forms and fusions
 assets/sprites/          generated: normal/{id}.png and shiny/{id}.png, 96x96
-assets/icons/            Snorlax and Zacian button art, app icons
+assets/icons/            Gigantamax Snorlax and Crowned Zacian art, app icons
 assets/fonts/            Press Start 2P and its licence
 tools/update_pokedex.py  regenerates data/ and assets/sprites/ from PokeAPI
 tools/forms_rules.json   hand-written rules for sorting alternate forms
-tests/logic.test.js      tests for scoring, rewards, stopwatch and the save format
-tests/shop.test.js       tests for forms, coins, purchases, fusions and Zygarde
+tools/make_test_save.mjs writes the two test saves in tests/
+tests/logic.test.js      tests for scoring, rewards, stopwatch, reminders and
+                         the save format, including converting version 1
+tests/shop.test.js       tests for forms, coins, purchases, fusions, Zygarde
+                         and bonus forms
 .github/workflows/       monthly Pokédex update (opens a pull request)
 ```
 
 ## The three layers
 
-**Pure logic** (`scoring.js`, `rewards.js`, `forms.js`, `shop.js`, `stopwatch.js`). No DOM, no
+**Pure logic** (`scoring.js`, `holdings.js`, `rewards.js`, `forms.js`, `shop.js`,
+`stopwatch.js`, `encourage.js`). No DOM, no
 storage, no clock: the current time and the random generator are passed in.
 This is what the tests exercise.
 
 **State** (`state.js`). One plain object holds everything. `normalize()`
 validates any JSON into that shape and recalculates the derived fields, and
-is used for both loading from `localStorage` and importing a file.
+is used for both loading from `localStorage` and importing a file. It also
+converts a save in the older version 1 format.
 [storage.json.md](storage.json.md) documents the object.
+
+What is held lives in four lists: `pokemon` (every copy, each with the
+`source` it came from), `unlocks` (paid forms), `fusions` and `grants`.
+`holdings.js` is the one place that reads them: how many copies, which forms
+are unlocked, which fusions exist, how many coins. `rewards.js` (rolling) and
+`shop.js` (buying) are built on it, and each adds to those lists in exactly
+one way.
 
 **Interface** (`app.js`, `views/`, `dom.js`, `pixelart.js`, `sfx.js`).
 `app.js` owns the state and is the only place that changes it.
@@ -71,11 +90,11 @@ is used for both loading from `localStorage` and importing a file.
 | `ctx.forms` | The index built by `indexForms()` from `data/forms.json`. If that file cannot be read the game runs with plain Pokémon only. |
 | `ctx.sfx.play(name)` | Sound effect. |
 | `ctx.render()`, `ctx.go(view)` | Redraw, navigate. |
-| `ctx.openModal()`, `ctx.closeModal()`, `ctx.confirm()`, `ctx.toast()` | Dialogs and messages. |
+| `ctx.openModal()`, `ctx.closeModal()`, `ctx.confirm()`, `ctx.toast()` | Dialogs and messages. `openModal(content, { page: true })` shows a full-page dialog (see below). |
 | `ctx.startSession()`, `pauseSession()`, `resumeSession()`, `stopSession()` | Stopwatch. |
 | `ctx.commitSession(record, stars, note)` | Record a finished session. |
 | `ctx.discardPending()` | Drop an unrated stopwatch session. |
-| `ctx.buyCopy()`, `buyCopies()`, `buyUpgrade()`, `fuseFusion()`, `unfuseFusion()` | Shop actions. Each asks for confirmation, applies the rule in `shop.js`, saves, redraws and shows what was obtained. |
+| `ctx.buyCopy()`, `buyCopies()`, `buyUpgrade()`, `fuseFusion()`, `unfuseFusion()` | Shop actions. Each asks for confirmation, applies the rule in `shop.js`, saves, redraws and shows what was obtained. A Pokédex entry that is open stays open and is redrawn. |
 | `ctx.setBuddy(ref)`, `toggleMute()`, `exportBackup()`, `importBackup()`, `resetAll()` | Everything else. |
 
 A view is a module exporting `render(ctx, root)` and, optionally,
@@ -88,8 +107,22 @@ view's `render`, which builds elements with `h()` from `dom.js`. `h()` only
 sets attributes and text nodes, so descriptions typed by the user can never
 become markup.
 
-Navigation is by URL hash: `#/`, `#/pokedex`, `#/history`, `#/stats`,
-`#/settings`.
+Navigation is by URL hash: `#/`, `#/pokedex`, `#/shop`, `#/history`,
+`#/stats`, `#/settings`.
+
+### Full-page dialogs
+
+A Pokédex entry looks like a page of its own but is a dialog:
+`ctx.openModal(content, { page: true, refresh })`. It has no address, so the
+Pokédex underneath keeps its scroll position, search and tab.
+
+- It covers the window with the page background (`.modal-layer.is-page`)
+  and carries its own BACK button, which calls `ctx.closeModal()`.
+- Opening it takes one step in the browser's history (`pushState`), so the
+  browser's Back button and a phone's back gesture close it. Closing it any
+  other way gives that step back.
+- `refresh` is called on every `ctx.render()`. That is how the entry shows
+  the new totals after a copy is bought from it, without closing.
 
 ## The tick
 
@@ -98,8 +131,10 @@ Navigation is by URL hash: `#/`, `#/pokedex`, `#/history`, `#/stats`,
 1. checks the running session against the 35-minute break limit and ends it
    if the limit has passed,
 2. beeps once a minute during the red countdown,
-3. updates the header chip and the tab title, and
-4. calls the current view's `tick`, which the dashboard uses to refresh the
+3. shows a reminder when 45 more minutes of active time have built up,
+4. keeps the screen awake while a session exists,
+5. updates the header chip, the tab title and the tab icon, and
+6. calls the current view's `tick`, which the dashboard uses to refresh the
    stopwatch face without redrawing anything else.
 
 All timing is computed from stored timestamps, never from counting ticks, so

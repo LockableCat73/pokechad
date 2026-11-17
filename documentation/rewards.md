@@ -1,6 +1,7 @@
 # Rewards
 
-Code: [`js/rewards.js`](../js/rewards.js). Reveal animation:
+Code: [`js/rewards.js`](../js/rewards.js) (rolls),
+[`js/holdings.js`](../js/holdings.js) (reading what is held). Reveal animation:
 [`js/views/reveal.js`](../js/views/reveal.js). Starter choice:
 [`js/views/starter.js`](../js/views/starter.js).
 
@@ -25,16 +26,38 @@ takes a Pokémon away.
 - It is a choice, not a roll: `STARTERS = [1, 4, 7, 25]`. The option you
   pick is highlighted in that Pokémon's own colour, taken from the `color`
   field in the data (green, red, blue, yellow).
-- It is an **extra** reward. It is stored in `state.starter`, separate from
-  the rolled `state.rewards`, and does not shift the rewards at 100, 200, …
+- It is an **extra** reward. It is stored in `state.pokemon` as a copy with
+  `"source": "starter"`, apart from the rolled copies (`"source": "track"`),
+  and does not shift the rewards at 100, 200, …
 - It counts as one copy of its species. Choosing Charmander means six more
   Charmander can be rolled, and the sixth (your seventh copy) is the shiny.
 - It is not a roll, so it does not touch the pity counter.
 - If you have no buddy yet, the starter becomes your buddy.
 
 `starterOwed(highWater, starter)` decides whether the choice is due.
-`collection(state)` returns every copy you hold, starter first, in one list;
-views use it so they do not need to special-case the starter.
+
+## Copies and where they come from
+
+`state.pokemon` is one list of every copy held. Each copy has a `source`:
+
+| `source` | From | A station on the track? |
+|---|---|---|
+| `starter` | The choice at 1 point | The START station |
+| `track` | A roll at a 100-point mark | Yes |
+| `shop` | Bought with Pokécoins | No |
+| `gift` | Given (test saves, hand-edited files) | No |
+
+Two kinds of question are asked of that list, and they must not be mixed up:
+
+- **"What do I hold?"** counts every copy, whatever its source: the 7 / 5 / 2
+  limit, which copy is the shiny, which alternate forms are unlocked, which
+  families are open. Use `state.pokemon`, `copiesOf()`, `countOwned()`.
+- **"Where am I on the track?"** looks at `track` copies only: how many
+  rewards have been handed out, which reward comes next (and so the early
+  game range), and the pity counter. Use `trackCopies()`.
+
+So a save full of gifts, or of copies bought in the shop, still has an empty
+track, and the next reward earned is reward number 1.
 
 ## Tiers
 
@@ -106,7 +129,7 @@ a tier with nothing to give.
 
 ## How a roll works
 
-`rollReward({ species, rewards, starter, rng })`:
+`rollReward({ species, state, forms, rng })`:
 
 0. **Range and family.** Look up the Pokédex limit for this reward, and treat
    a never-held species as available only if it is next in its family (see
@@ -121,11 +144,38 @@ a tier with nothing to give.
    either already held or next in line in their family.
 4. **Shiny?** The copy is shiny if it brings you to the tier's cap. Every
    earlier copy is normal. There is no random shiny chance.
+5. **Form.** Base for a first copy, otherwise the next free alternate form
+   not yet held (see [shop.md](shop.md#alternate-forms)).
+6. **Bonus form.** If the species was already held, a 1-in-12 chance of a
+   paid form as well (see below).
 
 It returns `null` only when every species in the game is at its cap.
 
 Random numbers come from `crypto.getRandomValues`. Tests pass their own
 generator through the `rng` argument.
+
+## Bonus forms
+
+A reward for a Pokémon you **already hold** has a 1-in-12 chance
+(`BONUS_FORM_CHANCE`) of also unlocking one of its paid forms: Mega,
+Gigantamax, Primal and the like, which otherwise cost 150 Pokécoins.
+
+- The chance is 1 in 12 however many paid forms the Pokémon has. On a hit,
+  one of the forms you do not have yet is picked, each equally likely
+  (`rollBonusForm()`).
+- A form is never unlocked twice. With nothing left to unlock there is no
+  roll.
+- Only forms that could be bought at that moment can come up
+  (`bonusCandidates()`): the artwork must exist, and a form's own requirement
+  still holds, so Galarian Zen Darmanitan needs Galarian Darmanitan first and
+  Ultra Necrozma needs a Necrozma fusion.
+- Never on the first copy of a species, never for Zygarde (its forms go by
+  copy count), and never a fusion.
+- Rewards on the track only. A copy bought in the shop never brings one.
+
+The form is added to `state.unlocks` with `"source": "bonus"` and costs
+nothing. The reward notes it as `bonusForm`. In the encounter, the Pokémon is
+revealed first and the form straight after, under "Bonus form".
 
 ## Pity
 
@@ -184,19 +234,22 @@ reduced-motion setting on, step 2 is skipped.
 import. It rolls once for each reward owed:
 
 ```
-owed = floor(highWater / 100) − rewards.length      (never below 0)
+owed = floor(highWater / 100) − (number of track copies)      (never below 0)
 ```
 
 A long session can cross several marks at once; each gets its own roll and
 its own encounter.
 
-Each reward is stored as:
+Each reward is added to `state.pokemon` as:
 
 ```json
-{ "n": 4, "trackPoints": 400, "dexId": 245, "tier": "legendary",
+{ "source": "track", "n": 4, "trackPoints": 400, "dexId": 245, "tier": "legendary",
   "shiny": false, "pity": true, "at": "2026-11-20T18:04:11.000Z",
   "sessionId": "s-mwq2x1ab-9kd0" }
 ```
+
+with `form` when it arrived in an alternate form and `bonusForm` when a paid
+form came with it.
 
 ## What "every Pokémon is available" means
 
@@ -211,13 +264,14 @@ in the pool; they belong to their species:
 - Regional and other free forms (Alolan, Origin, Rotom's appliances ...)
   arrive with later copies of the species, one new form per copy in Pokédex
   order. `rollReward()` returns the form along with the species.
-- Megas, Gigantamax and similar are bought with Pokécoins.
+- Megas, Gigantamax and similar are bought with Pokécoins, or come as a
+  bonus with a reward (see [Bonus forms](#bonus-forms)).
 - Fusions are made from two Pokémon in the shop.
 
 All of that is described in [shop.md](shop.md).
 
-Rolls give at most 7 / 5 / 2 copies of a species, counting any copies bought
-in the shop. Filling every species that way takes 931×7 + 71×5 + 23×2 = 6,918
+Rolls give at most 7 / 5 / 2 copies of a species, counting every copy held
+(bought and gift copies too). Filling every species that way takes 931×7 + 71×5 + 23×2 = 6,918
 copies.
 
 ## The luck gauge
