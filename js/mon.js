@@ -11,6 +11,8 @@
  *
  * resolveMon() returns an object the sprite() helper in dom.js accepts
  * (`id` is the sprite's file number, `shiny` says whether shiny art exists).
+ * It also carries `types`: the form's or fusion's own types when it has
+ * them (Alolan Vulpix is ice), otherwise the species' types.
  */
 
 import { BASE, findForm, displayName } from './forms.js';
@@ -19,7 +21,7 @@ import { activeFusions, unlockedForms, hasShiny } from './shop.js';
 /**
  * @param {{dex: object, forms: object}} ctx
  * @param {{dexId?: number, form?: string, fusion?: number}|null} ref
- * @returns {{id:number, name:string, shiny:boolean, label:string,
+ * @returns {{id:number, name:string, shiny:boolean, label:string, types:string[],
  *            species:object|null, form:object|null, fusion:object|null}|null}
  */
 export function resolveMon(ctx, ref) {
@@ -32,6 +34,7 @@ export function resolveMon(ctx, ref) {
       name: fusion.label,
       shiny: fusion.shiny !== false,
       label: 'Fused',
+      types: fusion.types || [],
       species: null,
       form: null,
       fusion,
@@ -47,12 +50,13 @@ export function resolveMon(ctx, ref) {
       name: displayName(species.name, form),
       shiny: form.shiny !== false,
       label: form.label,
+      types: form.types || species.types || [],
       species,
       form,
       fusion: null,
     };
   }
-  return { id: species.id, name: species.name, shiny: species.shiny !== false, label: 'Base', species, form: null, fusion: null };
+  return { id: species.id, name: species.name, shiny: species.shiny !== false, label: 'Base', types: species.types || [], species, form: null, fusion: null };
 }
 
 /**

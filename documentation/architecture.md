@@ -20,7 +20,8 @@ js/
   mon.js                 turns a species, form or fusion into a sprite
   stopwatch.js           start / pause / resume / finish, break limit,
                          when a reminder is due                               (pure)
-  encourage.js           the words of the 45-minute reminders                 (pure)
+  messages.js            what PokéChad says: general, by type, by Pokémon     (data)
+  encourage.js           picks a line for a start message or a reminder       (pure)
   notify.js              system notifications
   wakelock.js            keeps the screen on while a session exists
   favicon.js             the tab icon: Zacian, Snorlax or the default
@@ -131,7 +132,8 @@ Pokédex underneath keeps its scroll position, search and tab.
 1. checks the running session against the 35-minute break limit and ends it
    if the limit has passed,
 2. beeps once a minute during the red countdown,
-3. shows a reminder when 45 more minutes of active time have built up,
+3. shows a reminder when 45 more minutes of active time have built up
+   (the start message is sent by `startSession()`, not by the tick),
 4. keeps the screen awake while a session exists,
 5. updates the header chip, the tab title and the tab icon, and
 6. calls the current view's `tick`, which the dashboard uses to refresh the

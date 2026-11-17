@@ -61,7 +61,7 @@ ICONS = {
 
 # Fields every species entry must carry. An existing entry without one of
 # them (written by an older version of this script) is fetched again.
-SPECIES_FIELDS = ("id", "slug", "name", "gen", "tier", "family", "color")
+SPECIES_FIELDS = ("id", "slug", "name", "gen", "tier", "family", "color", "types")
 
 USER_AGENT = "pokedex-updater/1.0 (python-urllib)"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -129,8 +129,17 @@ def species_entry(species_id: int) -> dict:
 
     ``color`` is PokeAPI's Pokédex colour for the species (red, blue, green,
     yellow, ...). The site uses it to tint the starter choice.
+
+    ``types`` are the one or two types of the species' ordinary form (fire,
+    flying, ...), in PokeAPI's order. They are not part of the species record
+    itself, so they are read from its default "pokemon" entry. The site uses
+    them to pick messages that suit the Pokémon.
     """
     detail = fetch_json(f"{API}/pokemon-species/{species_id}/")
+    default = next(
+        (v["pokemon"]["url"] for v in detail.get("varieties", []) if v.get("is_default")),
+        f"{API}/pokemon/{species_id}/",
+    )
     english = next(
         (n["name"] for n in detail["names"] if n["language"]["name"] == "en"),
         detail["name"].replace("-", " ").title(),
@@ -145,7 +154,14 @@ def species_entry(species_id: int) -> dict:
         if detail.get("evolution_chain")
         else None,
         "color": detail["color"]["name"] if detail.get("color") else None,
+        "types": types_of(fetch_json(default)),
     }
+
+
+def types_of(pokemon: dict) -> list[str]:
+    """The type names of a PokeAPI "pokemon" record, first type first."""
+    slots = sorted(pokemon.get("types", []), key=lambda t: t.get("slot", 0))
+    return [t["type"]["name"] for t in slots]
 
 
 def download_png(url: str, target: Path) -> bool:
@@ -189,6 +205,8 @@ def variety_facts(pokemon_id: int) -> dict:
         "name": pokemon["name"],
         "species": id_from_url(pokemon["species"]["url"]),
         "mega": bool(form.get("is_mega")),
+        # A form can differ from its species: Alolan Vulpix is ice, not fire.
+        "types": types_of(pokemon),
     }
 
 
@@ -344,18 +362,20 @@ def update_forms(species: dict[int, dict], refresh: bool, workers: int) -> None:
     rules = json.loads(FORMS_RULES.read_text(encoding="utf-8"))
     previous = json.loads(FORMS_JSON.read_text(encoding="utf-8")) if FORMS_JSON.exists() else {}
     # Raw facts already on file, so only new forms need fetching. A fusion
-    # records its species as "base".
+    # records its species as "base". An entry written before a fact was
+    # recorded (for example "types") is fetched again.
     known: dict[int, dict] = {}
     for group in ("forms", "fusions", "skipped"):
         for entry in previous.get(group, []):
             owner = entry.get("species", entry.get("base"))
-            if owner is None or not all(k in entry for k in ("pid", "name", "mega")):
+            if owner is None or not all(k in entry for k in ("pid", "name", "mega", "types")):
                 continue
             known[entry["pid"]] = {
                 "pid": entry["pid"],
                 "name": entry["name"],
                 "species": owner,
                 "mega": entry["mega"],
+                "types": entry["types"],
             }
 
     listing = fetch_json(f"{API}/pokemon?limit=100000")
@@ -370,6 +390,10 @@ def update_forms(species: dict[int, dict], refresh: bool, workers: int) -> None:
     facts = [known[i] for i in variety_ids if i in known]
 
     forms, fusions, skipped = classify_forms(facts, species, rules)
+    # Every listed form and fusion carries its own types.
+    types_by_pid = {fact["pid"]: fact["types"] for fact in facts}
+    for entry in forms + fusions:
+        entry["types"] = types_by_pid[entry["pid"]]
 
     def sync(entry: dict) -> tuple[bool, bool]:
         pid = entry["pid"]

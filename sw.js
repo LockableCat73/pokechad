@@ -34,6 +34,7 @@ const SHELL_FILES = [
   'js/favicon.js',
   'js/forms.js',
   'js/holdings.js',
+  'js/messages.js',
   'js/mon.js',
   'js/notify.js',
   'js/wakelock.js',
